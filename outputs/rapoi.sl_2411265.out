@@ -1,0 +1,17 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) libfabric/1.19.0
+
+The following have been reloaded with a version change:
+  1) hwloc/2.7.2 => hwloc/2.9.2
+
+Traceback (most recent call last):
+  File "/nfs/home/fangz2/wenyi/RAC_copy/solve_mogp.py", line 17, in <module>
+    from optim.multi_tree_gp import MultiPrimitiveTree, cxOnePoint_type_wise, mutUniform_multi_tree, staticLimit, \
+  File "/nfs/home/fangz2/wenyi/RAC_copy/optim/__init__.py", line 1, in <module>
+    from .multi_tree_gp import *
+  File "/nfs/home/fangz2/wenyi/RAC_copy/optim/multi_tree_gp.py", line 13, in <module>
+    from utils.utils import *
+  File "/nfs/home/fangz2/wenyi/RAC_copy/utils/utils.py", line 14, in <module>
+    from scipy.spatial.distance import cdist
+ModuleNotFoundError: No module named 'scipy'

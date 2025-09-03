@@ -1,0 +1,27 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) libfabric/1.19.0
+
+The following have been reloaded with a version change:
+  1) hwloc/2.7.2 => hwloc/2.9.2
+
+==> Evaluating run 0 from nsw_Bitbrains_3OS_NSGP2_0_core_40.json
+[Run 0 Gen 21] Evaluating 44 individuals on test data...
+Traceback (most recent call last):
+  File "/nfs/home/fangz2/wenyi/RAC_copy/test_solve_mogp.py", line 323, in <module>
+    main()
+  File "/nfs/home/fangz2/wenyi/RAC_copy/test_solve_mogp.py", line 261, in main
+    agg = json.load(f)
+          ^^^^^^^^^^^^
+  File "/home/software/EasyBuild/software/Python/3.11.5-GCCcore-13.2.0/lib/python3.11/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/home/software/EasyBuild/software/Python/3.11.5-GCCcore-13.2.0/lib/python3.11/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/software/EasyBuild/software/Python/3.11.5-GCCcore-13.2.0/lib/python3.11/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/software/EasyBuild/software/Python/3.11.5-GCCcore-13.2.0/lib/python3.11/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)

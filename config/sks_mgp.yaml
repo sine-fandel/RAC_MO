@@ -1,0 +1,21 @@
+name: multitask_communication_gp
+population_size: 20
+task_num: 2
+generation_num: 5
+
+# GP parameters
+arity0: 8
+arity1: 9
+cxpb: 0.8
+mutpb: 0.1
+rmp: 0.6
+elitism_size: 2
+tournament_size: 7
+min_depth: 1
+max_depth: 7
+mut_min_depth: 0
+mut_max_depth: 4
+bloat_control: 8
+
+# multi-process
+cpu_num: 8
