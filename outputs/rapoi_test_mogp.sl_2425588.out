@@ -1,0 +1,38 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) libfabric/1.19.0
+
+The following have been reloaded with a version change:
+  1) hwloc/2.7.2 => hwloc/2.9.2
+
+==> Evaluating run 0 from nsw_Bitbrains_3OS_NSGP2_0_core_40.json
+[Run 0 Gen 50] Evaluating 26 individuals on test data...
+[Run 0 Gen 50] Front 0: energy=77858.63, communication=85874.69 (written)
+[Run 0 Gen 50] Front 1: energy=77858.63, communication=85874.69 (written)
+[Run 0 Gen 50] Front 2: energy=77775.31, communication=85874.69 (written)
+[Run 0 Gen 50] Front 3: energy=78878.62, communication=82811.71 (written)
+[Run 0 Gen 50] Front 4: energy=78920.38, communication=82996.32 (written)
+[Run 0 Gen 50] Front 5: energy=78920.38, communication=82996.32 (written)
+[Run 0 Gen 50] Front 6: energy=78878.62, communication=82811.71 (written)
+[Run 0 Gen 50] Front 7: energy=78920.38, communication=82996.32 (written)
+[Run 0 Gen 50] Front 8: energy=78920.38, communication=82996.32 (written)
+[Run 0 Gen 50] Front 9: energy=78428.44, communication=85941.34 (written)
+[Run 0 Gen 50] Front 10: energy=83941.57, communication=73886.37 (written)
+[Run 0 Gen 50] Front 11: energy=83941.57, communication=73886.37 (written)
+[Run 0 Gen 50] Front 12: energy=83941.57, communication=73886.37 (written)
+[Run 0 Gen 50] Front 13: energy=83941.54, communication=73886.37 (written)
+[Run 0 Gen 50] Front 14: energy=83941.54, communication=73886.37 (written)
+[Run 0 Gen 50] Front 15: energy=83941.57, communication=73886.37 (written)
+[Run 0 Gen 50] Front 16: energy=86956.95, communication=71167.65 (written)
+[Run 0 Gen 50] Front 17: energy=90019.18, communication=76813.16 (written)
+[Run 0 Gen 50] Front 18: energy=90019.18, communication=76813.16 (written)
+[Run 0 Gen 50] Front 19: energy=78528.13, communication=83354.06 (written)
+[Run 0 Gen 50] Front 20: energy=95996.03, communication=74156.41 (written)
+[Run 0 Gen 50] Front 21: energy=91372.83, communication=69798.20 (written)
+[Run 0 Gen 50] Front 22: energy=85253.15, communication=70741.22 (written)
+[Run 0 Gen 50] Front 23: energy=78384.34, communication=76898.50 (written)
+[Run 0 Gen 50] Front 24: energy=88645.40, communication=85413.74 (written)
+[Run 0 Gen 50] Front 25: energy=77757.80, communication=92803.24 (written)
+[Run 0 Gen 50] Saved 26 results to /nfs/home/fangz2/wenyi/RAC_copy/results/testing/20250904-0055/nsw_Bitbrains_3OS_NSGP2_core_40_run_0_gen_50.json
+[Run 0 Gen 50] Marked dominated entries; first-front size: 7 of 26
+Testing results written to /nfs/home/fangz2/wenyi/RAC_copy/results/testing/20250904-0055/nsw_Bitbrains_3OS_NSGP2_core_40_run_0_gen_50.json

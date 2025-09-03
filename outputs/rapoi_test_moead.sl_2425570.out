@@ -1,0 +1,60 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) libfabric/1.19.0
+
+The following have been reloaded with a version change:
+  1) hwloc/2.7.2 => hwloc/2.9.2
+
+==> Evaluating run 0 from nsw_Bitbrains_3OS_MOEA-D_0_core_40.json
+[Run 0 Gen 20] Evaluating 48 individuals on test data...
+[Run 0 Gen 20] Front 0: energy=81992.48, communication=89212.33 (written)
+[Run 0 Gen 20] Front 1: energy=81992.48, communication=89212.33 (written)
+[Run 0 Gen 20] Front 2: energy=79458.26, communication=91443.26 (written)
+[Run 0 Gen 20] Front 3: energy=79458.26, communication=91443.26 (written)
+[Run 0 Gen 20] Front 4: energy=86573.16, communication=89568.37 (written)
+[Run 0 Gen 20] Front 5: energy=86573.16, communication=89568.37 (written)
+[Run 0 Gen 20] Front 6: energy=94946.82, communication=79875.06 (written)
+[Run 0 Gen 20] Front 7: energy=94946.82, communication=79875.06 (written)
+[Run 0 Gen 20] Front 8: energy=96779.70, communication=75050.39 (written)
+[Run 0 Gen 20] Front 9: energy=96779.70, communication=75050.39 (written)
+[Run 0 Gen 20] Front 10: energy=96779.70, communication=75050.39 (written)
+[Run 0 Gen 20] Front 11: energy=96779.70, communication=75050.39 (written)
+[Run 0 Gen 20] Front 12: energy=77477.53, communication=93310.60 (written)
+[Run 0 Gen 20] Front 13: energy=77477.53, communication=93310.60 (written)
+[Run 0 Gen 20] Front 14: energy=77569.05, communication=93331.26 (written)
+[Run 0 Gen 20] Front 15: energy=77569.05, communication=93331.26 (written)
+[Run 0 Gen 20] Front 16: energy=77562.24, communication=93205.64 (written)
+[Run 0 Gen 20] Front 17: energy=77562.24, communication=93205.64 (written)
+[Run 0 Gen 20] Front 18: energy=77794.69, communication=91436.50 (written)
+[Run 0 Gen 20] Front 19: energy=77794.69, communication=91436.50 (written)
+[Run 0 Gen 20] Front 20: energy=80595.43, communication=92015.36 (written)
+[Run 0 Gen 20] Front 21: energy=80595.43, communication=92015.36 (written)
+[Run 0 Gen 20] Front 22: energy=78939.03, communication=89788.51 (written)
+[Run 0 Gen 20] Front 23: energy=78939.03, communication=89788.51 (written)
+[Run 0 Gen 20] Front 24: energy=80919.78, communication=88802.85 (written)
+[Run 0 Gen 20] Front 25: energy=80919.78, communication=88802.85 (written)
+[Run 0 Gen 20] Front 26: energy=80919.81, communication=88802.85 (written)
+[Run 0 Gen 20] Front 27: energy=80919.81, communication=88802.85 (written)
+[Run 0 Gen 20] Front 28: energy=79471.32, communication=92583.36 (written)
+[Run 0 Gen 20] Front 29: energy=79471.32, communication=92583.36 (written)
+[Run 0 Gen 20] Front 30: energy=77800.12, communication=92984.70 (written)
+[Run 0 Gen 20] Front 31: energy=77800.12, communication=92984.70 (written)
+[Run 0 Gen 20] Front 32: energy=81279.67, communication=90421.44 (written)
+[Run 0 Gen 20] Front 33: energy=81279.67, communication=90421.44 (written)
+[Run 0 Gen 20] Front 34: energy=79577.08, communication=88706.32 (written)
+[Run 0 Gen 20] Front 35: energy=79577.08, communication=88706.32 (written)
+[Run 0 Gen 20] Front 36: energy=78883.70, communication=89581.44 (written)
+[Run 0 Gen 20] Front 37: energy=78796.95, communication=89801.01 (written)
+[Run 0 Gen 20] Front 38: energy=77982.46, communication=89211.29 (written)
+[Run 0 Gen 20] Front 39: energy=77982.46, communication=89211.29 (written)
+[Run 0 Gen 20] Front 40: energy=78886.01, communication=89582.72 (written)
+[Run 0 Gen 20] Front 41: energy=78886.01, communication=89582.72 (written)
+[Run 0 Gen 20] Front 42: energy=78192.85, communication=91754.62 (written)
+[Run 0 Gen 20] Front 43: energy=78192.85, communication=91754.62 (written)
+[Run 0 Gen 20] Front 44: energy=77505.91, communication=93206.03 (written)
+[Run 0 Gen 20] Front 45: energy=77505.91, communication=93206.03 (written)
+[Run 0 Gen 20] Front 46: energy=77505.91, communication=93206.03 (written)
+[Run 0 Gen 20] Front 47: energy=77505.91, communication=93206.03 (written)
+[Run 0 Gen 20] Saved 48 results to /nfs/home/fangz2/wenyi/RAC_copy/results/testing/20250903-2351/nsw_Bitbrains_3OS_MOEA-D_core_40_run_0_gen_20.json
+[Run 0 Gen 20] Marked dominated entries; first-front size: 20 of 48
+Testing results written to /nfs/home/fangz2/wenyi/RAC_copy/results/testing/20250903-2351/nsw_Bitbrains_3OS_MOEA-D_core_40_run_0_gen_20.json

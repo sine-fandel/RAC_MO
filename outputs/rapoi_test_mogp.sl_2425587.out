@@ -1,0 +1,31 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) libfabric/1.19.0
+
+The following have been reloaded with a version change:
+  1) hwloc/2.7.2 => hwloc/2.9.2
+
+==> Evaluating run 0 from nsw_Bitbrains_3OS_NSGP2_0_core_40.json
+[Run 0 Gen 40] Evaluating 19 individuals on test data...
+[Run 0 Gen 40] Front 0: energy=77494.44, communication=91701.29 (written)
+[Run 0 Gen 40] Front 1: energy=77835.95, communication=85781.42 (written)
+[Run 0 Gen 40] Front 2: energy=77555.88, communication=89684.21 (written)
+[Run 0 Gen 40] Front 3: energy=77474.34, communication=89689.34 (written)
+[Run 0 Gen 40] Front 4: energy=85354.39, communication=79743.60 (written)
+[Run 0 Gen 40] Front 5: energy=85043.93, communication=79763.29 (written)
+[Run 0 Gen 40] Front 6: energy=77456.93, communication=92648.88 (written)
+[Run 0 Gen 40] Front 7: energy=77456.93, communication=92648.88 (written)
+[Run 0 Gen 40] Front 8: energy=77456.93, communication=92648.88 (written)
+[Run 0 Gen 40] Front 9: energy=77456.93, communication=92648.88 (written)
+[Run 0 Gen 40] Front 10: energy=87588.25, communication=76284.03 (written)
+[Run 0 Gen 40] Front 11: energy=87504.95, communication=76284.03 (written)
+[Run 0 Gen 40] Front 12: energy=87504.95, communication=76284.03 (written)
+[Run 0 Gen 40] Front 13: energy=77490.83, communication=92628.08 (written)
+[Run 0 Gen 40] Front 14: energy=77490.83, communication=92628.08 (written)
+[Run 0 Gen 40] Front 15: energy=77490.83, communication=92628.08 (written)
+[Run 0 Gen 40] Front 16: energy=77690.52, communication=90027.69 (written)
+[Run 0 Gen 40] Front 17: energy=84856.54, communication=73731.68 (written)
+[Run 0 Gen 40] Front 18: energy=77413.91, communication=93034.93 (written)
+[Run 0 Gen 40] Saved 19 results to /nfs/home/fangz2/wenyi/RAC_copy/results/testing/20250904-0055/nsw_Bitbrains_3OS_NSGP2_core_40_run_0_gen_40.json
+[Run 0 Gen 40] Marked dominated entries; first-front size: 9 of 19
+Testing results written to /nfs/home/fangz2/wenyi/RAC_copy/results/testing/20250904-0055/nsw_Bitbrains_3OS_NSGP2_core_40_run_0_gen_40.json
