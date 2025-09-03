@@ -182,6 +182,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--RUN", help="run", dest="run", type=int, default="0")
     parser.add_argument("-s", "--SEED", help="seed", dest="seed", type=int, default="0")
+    parser.add_argument(
+        "--gen",
+        dest="gen",
+        type=int,
+        default=None,
+        help=(
+            "Run only this generation index (range [gen, gen+1)). "
+            "If omitted, runs 1..generation_num-1."
+        ),
+    )
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -303,7 +313,12 @@ if __name__ == "__main__":
         json.dump(data, gen_file)
 
     # Begin the generational process
-    for gen in range(1, generation_num):
+    if args.gen is not None:
+        loop_start, loop_end = args.gen, args.gen + 1
+    else:
+        loop_start, loop_end = 1, generation_num
+
+    for gen in range(loop_start, loop_end):
         # Warm up the simulation
         set_seed(gen)
         start_training_time = time.time()
@@ -373,4 +388,3 @@ if __name__ == "__main__":
             json.dump(data, gen_file)
 
     pool.close()
-
