@@ -1,7 +1,7 @@
 name: communication_mincut_gp
 sub_population_size0: 1024
 sub_population_size1: 1024
-generation_num: 51
+generation_num: 80
 
 # GP parameters
 arity0: 9
