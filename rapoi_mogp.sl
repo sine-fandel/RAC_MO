@@ -9,4 +9,4 @@
 module load GCCcore/13.2.0 Python/3.11.5
 source ../../zhengxin/venv/bin/activate
 
-python3 solve_mogp.py -r $1 -s $1 --gen 26
+python3 solve_mogp.py -r $1 -s $1
