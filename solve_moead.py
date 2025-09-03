@@ -386,6 +386,7 @@ if __name__ == "__main__":
             "obj2": round(logbook.chapters["obj2"].select("min")[-1], 2),
             "time": round(logbook.chapters["obj1"].select("time")[-1], 2),
             "best": best_front,
+            "bestCount": len(best_front),
         }
     }
     with open(json_file, "r") as gen_file:
@@ -472,6 +473,7 @@ if __name__ == "__main__":
                 "obj2": round(logbook.chapters["obj2"].select("min")[-1], 2),
                 "time": round(logbook.chapters["obj1"].select("time")[-1], 2),
                 "best": best_front,
+                "bestCount": len(best_front),
             }
         }
         with open(json_file, "r") as gen_file:

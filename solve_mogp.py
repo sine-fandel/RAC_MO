@@ -1,9 +1,14 @@
+import warnings
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
 """
 training the GPHH to solve dynamic RAC problems
 
 @Author: Zhengxin Fang
     email: zhengxin.fang@ecs.vuw.ac.nz
 """
+
 import numpy as np
 import multiprocessing
 import operator
@@ -14,18 +19,21 @@ from deap import creator
 from deap import tools
 from deap import gp
 
-from optim.multi_tree_gp import MultiPrimitiveTree, cxOnePoint_type_wise, mutUniform_multi_tree, staticLimit, \
-                                genFull_mutual, assignCrowdingDist
+from optim.multi_tree_gp import (
+    MultiPrimitiveTree,
+    cxOnePoint_type_wise,
+    mutUniform_multi_tree,
+    staticLimit,
+    assignCrowdingDist,
+)
 
 from deap.algorithms import varAnd, varOr
 
 from env.simulator.code.simulator import SimulatorState, Simulator
 
-from env.simulator.code.simulator.io.loading import load_init_env_data, load_container_data, load_os_data
-
 from utils.utils import *
 
-config = get_config(path='./config/communication_mincut_gp.yaml')
+config = get_config(path="./config/communication_mincut_gp.yaml")
 sub_population_size0 = config["sub_population_size0"]
 sub_population_size1 = config["sub_population_size1"]
 generation_num = config["generation_num"]
@@ -44,8 +52,31 @@ mut_max_depth = config["mut_max_depth"]
 
 pset = {"vm": None, "pm": None}
 # # terminal nodes list
-TERMINAL_NODES = {"vm": {"ARG0": "container_cpu", "ARG1": "container_memories", "ARG2": "remaining_cpu_capacity", "ARG3": "remaining_memory_capacity", "ARG4": "vm_cpu_overhead", "ARG5": "vm_memory_overhead", "ARG6": "vm_pm_innerc", "ARG7": "vm_pm_outerc", "ARG8": "affinity"},
-            "pm": {"ARG0": "vm_cpu_capacity", "ARG1": "vm_memory_capacity", "ARG2": "remaining_cpu_capacity", "ARG3": "remaining_memory_capacity", "ARG4": "pm_cpu_capacity", "ARG5": "pm_memory_capacity", "ARG6": "pm_core", "ARG7": "pm_innerc", "ARG8": "pm_outerc", "ARG9": "affinity"}}
+TERMINAL_NODES = {
+    "vm": {
+        "ARG0": "container_cpu",
+        "ARG1": "container_memories",
+        "ARG2": "remaining_cpu_capacity",
+        "ARG3": "remaining_memory_capacity",
+        "ARG4": "vm_cpu_overhead",
+        "ARG5": "vm_memory_overhead",
+        "ARG6": "vm_pm_innerc",
+        "ARG7": "vm_pm_outerc",
+        "ARG8": "affinity",
+    },
+    "pm": {
+        "ARG0": "vm_cpu_capacity",
+        "ARG1": "vm_memory_capacity",
+        "ARG2": "remaining_cpu_capacity",
+        "ARG3": "remaining_memory_capacity",
+        "ARG4": "pm_cpu_capacity",
+        "ARG5": "pm_memory_capacity",
+        "ARG6": "pm_core",
+        "ARG7": "pm_innerc",
+        "ARG8": "pm_outerc",
+        "ARG9": "affinity",
+    },
+}
 
 
 for type, item in pset.items():
@@ -70,22 +101,11 @@ toolbox = base.Toolbox()
 initial two expressions
 """
 toolbox.register(
-     "expr",
+    "expr",
     lambda: {
-        "vm":
-            gp.genHalfAndHalf(
-                pset=pset["vm"],
-                min_=min_depth,
-                max_=max_depth
-            ),
-        "pm":
-            gp.genHalfAndHalf(
-                pset=pset["pm"],
-                min_=min_depth,
-                max_=max_depth
-            )
-
-    }
+        "vm": gp.genHalfAndHalf(pset=pset["vm"], min_=min_depth, max_=max_depth),
+        "pm": gp.genHalfAndHalf(pset=pset["pm"], min_=min_depth, max_=max_depth),
+    },
 )
 toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.expr)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
@@ -97,36 +117,50 @@ toolbox.register("mate", cxOnePoint_type_wise)
 toolbox.register("expr_mut", gp.genFull, min_=mut_min_depth, max_=mut_max_depth)
 toolbox.register("mutate", mutUniform_multi_tree, expr=toolbox.expr_mut, pset=pset)
 
-toolbox.decorate("mate", staticLimit(key=operator.attrgetter("height"), max_value=bloat_control))
-toolbox.decorate("mutate", staticLimit(key=operator.attrgetter("height"), max_value=bloat_control))
+toolbox.decorate(
+    "mate", staticLimit(key=operator.attrgetter("height"), max_value=bloat_control)
+)
+toolbox.decorate(
+    "mutate", staticLimit(key=operator.attrgetter("height"), max_value=bloat_control)
+)
+
 
 # ==========
 # Evaluation
 # ==========
-def eval_individual(individual, sim_state: SimulatorState, containers, os, \
-          applications_reverse: dict, test=False) -> float:
-    """evaluate dual-tree gp individual with min-cut
-    """
+def eval_individual(
+    individual,
+    sim_state: SimulatorState,
+    containers,
+    os,
+    applications_reverse: dict,
+    test=False,
+) -> float:
+    """evaluate dual-tree gp individual with min-cut"""
     sim = Simulator(sim_state, test=test)
     func0 = toolbox.compile(expr=individual["vm"], pset=pset["vm"])
     func1 = toolbox.compile(expr=individual["pm"], pset=pset["pm"])
     current_timestamp = sim.current_timestamp
 
     for app, clist in applications_reverse.items():
-        container_clusters, P, P_container_id = app.min_cut(containers, os, 24000, 20000)
+        container_clusters, P, P_container_id = app.min_cut(
+            containers, os, 24000, 20000
+        )
 
         num = 0
         for row in container_clusters.iterrows():
-            vm_selection = sim.vm_selection(func0, app, [], row[1][0 : 3], row[1][3], 1)
+            vm_selection = sim.vm_selection(func0, app, [], row[1][0:3], row[1][3], 1)
             cid_list = []
             for p in range(len(P[num])):
-                cid_list.append(app.vector_id_list[P[num][p]]) 
-            
+                cid_list.append(app.vector_id_list[P[num][p]])
+
             num += 1
-            sim.step_first_layer(vm_selection, cid_list, row[1][0 : 3], row[1][3], [False])
+            sim.step_first_layer(
+                vm_selection, cid_list, row[1][0:3], row[1][3], [False]
+            )
             if sim.to_allocate_vm_data != None:
                 pm_selection = sim.pm_selection(func1, app, [], 1)
-                sim.step_second_layer(pm_selection, cid_list, row[1][0 : 3], row[1][3])
+                sim.step_second_layer(pm_selection, cid_list, row[1][0:3], row[1][3])
 
         # update the communication overhead information
         sim.update_current_communication(app)
@@ -135,7 +169,10 @@ def eval_individual(individual, sim_state: SimulatorState, containers, os, \
             current_timestamp = sim.current_timestamp
             sim.update_total_communication(previous_timestamp, current_timestamp)
     # print(sim.running_energy_consumption, sim.running_communication_overhead)
-    return sim.running_energy_consumption, sim.running_communication_overhead,
+    return (
+        sim.running_energy_consumption,
+        sim.running_communication_overhead,
+    )
 
 
 if __name__ == "__main__":
@@ -158,21 +195,18 @@ if __name__ == "__main__":
 
     # create json file to save training data
     training_result = {
-                        "sub_population_size": sub_population_size0,
-                        "cxpb": cxpb,
-                        "mutpb": mutpb,
-                        "elitism_size": elitism_size,
-                        "tournament_size": tournament_size,
-                        "min_depth": min_depth,
-                        "max_depth": max_depth,
-                        "mut_min_depth": mut_min_depth,
-                        "mut_max_depth": mut_max_depth,
-                        "generation": {
+        "sub_population_size": sub_population_size0,
+        "cxpb": cxpb,
+        "mutpb": mutpb,
+        "elitism_size": elitism_size,
+        "tournament_size": tournament_size,
+        "min_depth": min_depth,
+        "max_depth": max_depth,
+        "mut_min_depth": mut_min_depth,
+        "mut_max_depth": mut_max_depth,
+        "generation": {},
+    }
 
-                        }
-                    }
-    
-    
     json_file = f"./results/training/nsw_Bitbrains_3OS_NSGP2_{run}_core_{config['cpu_num']}.json"
     with open(json_file, "w") as gen_file:
         json.dump(training_result, gen_file)
@@ -182,7 +216,7 @@ if __name__ == "__main__":
     # Process Pool
     cpu_count = config["cpu_num"]
     print(f"CPU count: {cpu_count}")
-    pool = multiprocessing.Pool(cpu_count)      # use multi-process of evaluation
+    pool = multiprocessing.Pool(cpu_count)  # use multi-process of evaluation
     toolbox.register("map", pool.map)
 
     pop = toolbox.population(n=sub_population_size0)
@@ -205,18 +239,27 @@ if __name__ == "__main__":
     # mstats.register("max", np.max)
 
     logbook = tools.Logbook()
-    logbook.header = ['gen', 'nevals'] + (mstats.fields if mstats else [])
+    logbook.header = ["gen", "nevals"] + (mstats.fields if mstats else [])
     start_time = time.time()  # Start time of generation
 
     # Evaluate the individuals with an invalid fitness
-    start_time = time.time()  
+    start_time = time.time()
 
     # ===========================================
     # apply simulator to evalution the population
     # ===========================================
     # get training data
-    sim_state, input_containers, applications, applications_reverse, input_os = training_simulation(case=0)
-    toolbox.register("evaluate_individual", eval_individual, sim_state=sim_state, containers=input_containers, os=input_os, applications_reverse=applications_reverse)
+    sim_state, input_containers, applications, applications_reverse, input_os = (
+        training_simulation(case=0)
+    )
+    toolbox.register(
+        "evaluate_individual",
+        eval_individual,
+        sim_state=sim_state,
+        containers=input_containers,
+        os=input_os,
+        applications_reverse=applications_reverse,
+    )
 
     # save the energy and communication for each individual
     fitnesses = toolbox.map(toolbox.evaluate_individual, pop)
@@ -244,13 +287,21 @@ if __name__ == "__main__":
     for ind in fronts[0]:
         best_front.append(str(ind))
     # update json file to save the best training result of each generation
-    new_data = {str(0): {"obj1": round(logbook.chapters["obj1"].select("min")[-1], 2), "obj2": round(logbook.chapters["obj2"].select("min")[-1], 2), "time": round(logbook.chapters["obj1"].select("time")[-1], 2), "best": best_front}}
+    new_data = {
+        str(0): {
+            "obj1": round(logbook.chapters["obj1"].select("min")[-1], 2),
+            "obj2": round(logbook.chapters["obj2"].select("min")[-1], 2),
+            "time": round(logbook.chapters["obj1"].select("time")[-1], 2),
+            "best": best_front,
+            "bestCount": len(best_front),
+        }
+    }
     with open(json_file, "r") as gen_file:
         data = json.load(gen_file)
         data["generation"].update(new_data)
     with open(json_file, "w") as gen_file:
         json.dump(data, gen_file)
-    
+
     # Begin the generational process
     for gen in range(1, generation_num):
         # Warm up the simulation
@@ -266,8 +317,17 @@ if __name__ == "__main__":
         # apply simulator to evalution the population
         # ===========================================
         # get training data
-        sim_state, input_containers, applications, applications_reverse, input_os = training_simulation(case=gen)
-        toolbox.register("evaluate_individual", eval_individual, sim_state=sim_state, containers=input_containers, os=input_os, applications_reverse=applications_reverse)
+        sim_state, input_containers, applications, applications_reverse, input_os = (
+            training_simulation(case=gen)
+        )
+        toolbox.register(
+            "evaluate_individual",
+            eval_individual,
+            sim_state=sim_state,
+            containers=input_containers,
+            os=input_os,
+            applications_reverse=applications_reverse,
+        )
         # Replace the current population by the offspring
         all_pop = pop + offspring
         individual_results = toolbox.map(toolbox.evaluate_individual, all_pop)
@@ -286,17 +346,26 @@ if __name__ == "__main__":
         # ===========================================
         # Append the current generation statistics to the logbook
         record = mstats.compile(pop) if mstats else {}
-        record["time"] = (time.time() - start_training_time) / 60  # Time taken for the generation
+        record["time"] = (
+            time.time() - start_training_time
+        ) / 60  # Time taken for the generation
         logbook.record(gen=gen, nevals=len(pop), **record)
         print(logbook.stream)
-        
 
         # update json file to save the best training result of each generation
         fronts = tools.sortNondominated(pop, k=len(pop), first_front_only=True)
         best_front = []
         for ind in fronts[0]:
             best_front.append(str(ind))
-        new_data = {str(gen): {"obj1": round(logbook.chapters["obj1"].select("min")[-1], 2), "obj2": round(logbook.chapters["obj2"].select("min")[-1], 2), "time": round(logbook.chapters["obj1"].select("time")[-1], 2), "best": best_front}}
+        new_data = {
+            str(gen): {
+                "obj1": round(logbook.chapters["obj1"].select("min")[-1], 2),
+                "obj2": round(logbook.chapters["obj2"].select("min")[-1], 2),
+                "time": round(logbook.chapters["obj1"].select("time")[-1], 2),
+                "best": best_front,
+                "bestCount": len(best_front),
+            }
+        }
         with open(json_file, "r") as gen_file:
             data = json.load(gen_file)
             data["generation"].update(new_data)
@@ -304,3 +373,4 @@ if __name__ == "__main__":
             json.dump(data, gen_file)
 
     pool.close()
+
