@@ -9,4 +9,4 @@
 module load GCCcore/13.2.0 Python/3.11.5
 source ../../zhengxin/venv/bin/activate
 
-python3 test_mogp.py --hide_expr --run 0 --gen $1
+python3 test_moead.py --hide_expr --run 0 --gen $1
