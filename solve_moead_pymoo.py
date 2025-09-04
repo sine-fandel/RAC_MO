@@ -588,7 +588,7 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     json_file = os.path.join(
         OUTPUT_DIR,
-        f"nsw_Bitbrains_3OS_MOEA-D_{run}_core_{config['cpu_num']}.json",
+        f"nsw_Bitbrains_3OS_MOEA-D-PYMOO_{run}_core_{config['cpu_num']}.json",
     )
     init_training_json(json_file)
 
