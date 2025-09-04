@@ -13,6 +13,10 @@ import numpy as np
 import multiprocessing
 import operator
 import time
+from datetime import datetime
+import os
+import json
+import argparse
 
 from deap import base
 from deap import creator
@@ -32,6 +36,13 @@ from deap.algorithms import varAnd, varOr
 from env.simulator.code.simulator import SimulatorState, Simulator
 
 from utils.utils import *
+
+DECIMAL_PRECISION = 6  # decimal precision for float comparison
+
+# Base output directory under results/training with timestamp like YYYYMMDD-HHMM
+_OUTPUT_TS = datetime.now().strftime("%Y%m%d-%H%M")
+OUTPUT_DIR = os.path.join(".", "results", "training", _OUTPUT_TS)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 config = get_config(path="./config/communication_mincut_gp.yaml")
 sub_population_size0 = config["sub_population_size0"]
@@ -175,35 +186,170 @@ def eval_individual(
     )
 
 
-if __name__ == "__main__":
-    import argparse
-    import json
+def log_all_fronts(
+    pop,
+    gen: int,
+    run: int,
+    cpu_num: int,
+    out_file: str | None = None,
+    verbose: bool = False,
+    log_fn=print,
+):
+    """Log all Pareto fronts for the given population to a JSON file."""
+    fronts = tools.sortNondominated(pop, k=len(pop), first_front_only=False)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-r", "--RUN", help="run", dest="run", type=int, default="0")
-    parser.add_argument("-s", "--SEED", help="seed", dest="seed", type=int, default="0")
-    parser.add_argument(
-        "--gen",
-        dest="gen",
-        type=int,
-        default=None,
-        help=(
-            "Run only this generation index (range [gen, gen+1)). "
-            "If omitted, runs 1..generation_num-1."
-        ),
+    # Compute global min/max across all fronts for normalization
+    all_energy = [ind.fitness.values[0] for front in fronts for ind in front]
+    all_comm = [ind.fitness.values[1] for front in fronts for ind in front]
+    e_min, e_max = (min(all_energy), max(all_energy)) if all_energy else (0.0, 0.0)
+    c_min, c_max = (min(all_comm), max(all_comm)) if all_comm else (0.0, 0.0)
+
+    def _norm(v, vmin, vmax):
+        return 0.0 if vmax == vmin else (v - vmin) / (vmax - vmin)
+
+    payload = {"fronts": []}
+    for rank, front in enumerate(fronts):
+        exprs = []
+        for ind in front:
+            e_val = ind.fitness.values[0]
+            c_val = ind.fitness.values[1]
+            exprs.append(
+                {
+                    "expr": str(ind),
+                    "energy": round(e_val, DECIMAL_PRECISION),
+                    "communication": round(c_val, DECIMAL_PRECISION),
+                    "energy_norm": round(_norm(e_val, e_min, e_max), DECIMAL_PRECISION),
+                    "communication_norm": round(
+                        _norm(c_val, c_min, c_max), DECIMAL_PRECISION
+                    ),
+                }
+            )
+        payload["fronts"].append({"rank": rank, "count": len(exprs), "exprs": exprs})
+
+    # Default output path if none is provided
+    if out_file is None:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        out_file = os.path.join(
+            OUTPUT_DIR,
+            f"nsw_Bitbrains_3OS_NSGP2_core_{cpu_num}_run_{run}_gen_{gen}_fronts.json",
+        )
+
+    with open(out_file, "w") as f:
+        json.dump(payload, f)
+
+    if verbose:
+        log_fn(f"[gen {gen}] Wrote all fronts to {out_file}")
+
+    return out_file
+
+
+def _build_first_front(pop):
+    """Return first Pareto front entries with expr/energy/communication."""
+    fronts = tools.sortNondominated(pop, k=len(pop), first_front_only=True)
+    first = list(fronts[0])
+
+    # Min-max for the first front only
+    energies = [ind.fitness.values[0] for ind in first]
+    comms = [ind.fitness.values[1] for ind in first]
+    e_min, e_max = (min(energies), max(energies)) if energies else (0.0, 0.0)
+    c_min, c_max = (min(comms), max(comms)) if comms else (0.0, 0.0)
+
+    def _norm(v, vmin, vmax):
+        return 0.0 if vmax == vmin else (v - vmin) / (vmax - vmin)
+
+    best_front = []
+    for ind in first:
+        e_val = ind.fitness.values[0]
+        c_val = ind.fitness.values[1]
+        best_front.append(
+            {
+                "expr": str(ind),
+                "energy": round(e_val, DECIMAL_PRECISION),
+                "communication": round(c_val, DECIMAL_PRECISION),
+                "energy_norm": round(_norm(e_val, e_min, e_max), DECIMAL_PRECISION),
+                "communication_norm": round(
+                    _norm(c_val, c_min, c_max), DECIMAL_PRECISION
+                ),
+            }
+        )
+    return best_front
+
+
+def write_generation_log(
+    gen: int,
+    pop,
+    logbook,
+    json_file: str,
+    run: int,
+    cpu_num: int,
+    log_fronts_gen: int | None = None,
+    log_fronts_file: str | None = None,
+):
+    """Write summary and first front for a generation; optionally dump all fronts."""
+    best_front = _build_first_front(pop)
+    new_data = {
+        str(gen): {
+            "min_energy": round(
+                logbook.chapters["energy"].select("min")[-1], DECIMAL_PRECISION
+            ),
+            "min_communication": round(
+                logbook.chapters["communication"].select("min")[-1], DECIMAL_PRECISION
+            ),
+            "time": round(
+                logbook.chapters["energy"].select("time")[-1], DECIMAL_PRECISION
+            ),
+            "first_front": best_front,
+            "first_front_count": len(best_front),
+        }
+    }
+    with open(json_file, "r") as gen_file:
+        data = json.load(gen_file)
+        data["generation"].update(new_data)
+    with open(json_file, "w") as gen_file:
+        json.dump(data, gen_file)
+
+    if log_fronts_gen is not None and log_fronts_gen == gen:
+        log_all_fronts(
+            pop,
+            gen=gen,
+            run=run,
+            cpu_num=cpu_num,
+            out_file=log_fronts_file,
+            verbose=True,
+        )
+
+
+def record_generation(logbook, mstats, pop, start_time, gen: int):
+    """Compile stats, add elapsed minutes, record to logbook and print."""
+    record = mstats.compile(pop) if mstats else {}
+    record["time"] = (time.time() - start_time) / 60
+    logbook.record(gen=gen, nevals=len(pop), **record)
+    print(logbook.stream)
+
+
+def register_sim_evaluator(toolbox, gen: int):
+    """Register evaluate_individual with simulation data for the given generation."""
+    sim_state, input_containers, applications, applications_reverse, input_os = (
+        training_simulation(case=gen)
     )
-    args = parser.parse_args()
+    toolbox.register(
+        "evaluate_individual",
+        eval_individual,
+        sim_state=sim_state,
+        containers=input_containers,
+        os=input_os,
+        applications_reverse=applications_reverse,
+    )
 
-    set_seed(args.seed)
-    run = args.run
 
-    valid_energy = []
-    valid_communication = []
-    valid_fitness = []
-    worst_energy = []
-    worst_communication = []
+def eval_pop(individuals, toolbox):
+    """Evaluate individuals via toolbox.evaluate_individual and assign fitness."""
+    results = toolbox.map(toolbox.evaluate_individual, individuals)
+    for ind, fit in zip(individuals, results):
+        ind.fitness.values = fit
 
-    # create json file to save training data
+
+def init_training_json(json_file: str):
     training_result = {
         "sub_population_size": sub_population_size0,
         "cxpb": cxpb,
@@ -216,10 +362,78 @@ if __name__ == "__main__":
         "mut_max_depth": mut_max_depth,
         "generation": {},
     }
-
-    json_file = f"./results/training/nsw_Bitbrains_3OS_NSGP2_{run}_core_{config['cpu_num']}.json"
     with open(json_file, "w") as gen_file:
         json.dump(training_result, gen_file)
+
+
+def resolve_generation_bounds(selected_gen: int | None, generation_num: int):
+    """Return (loop_start, loop_end) based on optional selected generation."""
+    if selected_gen is not None:
+        return selected_gen, selected_gen + 1
+    return 1, generation_num
+
+
+def build_solve_mogp_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Train NSGP2 and optionally dump all Pareto fronts for a generation",
+    )
+    parser.add_argument("-r", "--RUN", help="run", dest="run", type=int, default="0")
+    parser.add_argument("-s", "--SEED", help="seed", dest="seed", type=int, default="0")
+    parser.add_argument(
+        "--gen",
+        dest="gen",
+        type=int,
+        default=None,
+        help=(
+            "Run only this generation index (range [gen, gen+1)). "
+            "If omitted, runs 1..generation_num-1."
+        ),
+    )
+    parser.add_argument(
+        "--log-fronts-gen",
+        dest="log_fronts_gen",
+        type=int,
+        default=None,
+        help=(
+            "If set, dump all Pareto fronts for this generation index "
+            "to a separate JSON file."
+        ),
+    )
+    parser.add_argument(
+        "--log-fronts-file",
+        dest="log_fronts_file",
+        type=str,
+        default=None,
+        help=(
+            "Optional output file path for --log-fronts-gen. If omitted, a default "
+            "path under results/training is used."
+        ),
+    )
+    return parser
+
+
+def parse_solve_mogp_args(argv=None):
+    return build_solve_mogp_parser().parse_args(argv)
+
+
+if __name__ == "__main__":
+    args = parse_solve_mogp_args()
+
+    set_seed(args.seed)
+    run = args.run
+
+    valid_energy = []
+    valid_communication = []
+    valid_fitness = []
+    worst_energy = []
+    worst_communication = []
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    json_file = os.path.join(
+        OUTPUT_DIR,
+        f"nsw_Bitbrains_3OS_NSGP2_{run}_core_{config['cpu_num']}.json",
+    )
+    init_training_json(json_file)
 
     start_time = time.time()
 
@@ -231,7 +445,6 @@ if __name__ == "__main__":
 
     pop = toolbox.population(n=sub_population_size0)
 
-    # stats_fit = tools.Statistics(lambda ind: ind.fitness.values)
     stats_size = tools.Statistics(len)
     stats_obj1 = tools.Statistics(lambda ind: ind.fitness.values[0])
     stats_obj2 = tools.Statistics(lambda ind: ind.fitness.values[1])
@@ -241,12 +454,7 @@ if __name__ == "__main__":
         stats.register("min", np.min)
         stats.register("max", np.max)
 
-    mstats = tools.MultiStatistics(obj1=stats_obj1, obj2=stats_obj2)
-    # mstats = tools.MultiStatistics(fitness=stats_fit, size=stats_size)
-    # mstats.register("avg", np.mean)
-    # mstats.register("std", np.std)
-    # mstats.register("min", np.min)
-    # mstats.register("max", np.max)
+    mstats = tools.MultiStatistics(energy=stats_obj1, communication=stats_obj2)
 
     logbook = tools.Logbook()
     logbook.header = ["gen", "nevals"] + (mstats.fields if mstats else [])
@@ -256,67 +464,33 @@ if __name__ == "__main__":
     start_time = time.time()
 
     # ===========================================
-    # apply simulator to evalution the population
+    # apply simulator to evaluation for generation 0
     # ===========================================
-    # get training data
-    sim_state, input_containers, applications, applications_reverse, input_os = (
-        training_simulation(case=0)
-    )
-    toolbox.register(
-        "evaluate_individual",
-        eval_individual,
-        sim_state=sim_state,
-        containers=input_containers,
-        os=input_os,
-        applications_reverse=applications_reverse,
-    )
+    register_sim_evaluator(toolbox, gen=0)
 
-    # save the energy and communication for each individual
-    fitnesses = toolbox.map(toolbox.evaluate_individual, pop)
-    energy_list = []
-    communication_list = []
-    for ind, fit in zip(pop, fitnesses):
-        ind.fitness.values = fit
-        energy_list.append(fit[0])
-        communication_list.append(fit[1])
-    # ===========================================
-    # ===========================================
+    # Evaluate generation 0 population
+    eval_pop(pop, toolbox)
 
-    record = mstats.compile(pop) if mstats else {}
-    record["time"] = (time.time() - start_time) / 60  # Time taken for the generation
-    logbook.record(gen=0, nevals=len(pop), **record)
-    print(logbook.stream)
+    record_generation(logbook, mstats, pop, start_time, gen=0)
 
     # save diversity list
     fitness_list = []
     for i in range(len(pop)):
         fitness_list.append(pop[i].fitness.values[0])
 
-    fronts = tools.sortNondominated(pop, k=len(pop), first_front_only=True)
-    best_front = []
-    for ind in fronts[0]:
-        best_front.append(str(ind))
-    # update json file to save the best training result of each generation
-    new_data = {
-        str(0): {
-            "obj1": round(logbook.chapters["obj1"].select("min")[-1], 2),
-            "obj2": round(logbook.chapters["obj2"].select("min")[-1], 2),
-            "time": round(logbook.chapters["obj1"].select("time")[-1], 2),
-            "best": best_front,
-            "bestCount": len(best_front),
-        }
-    }
-    with open(json_file, "r") as gen_file:
-        data = json.load(gen_file)
-        data["generation"].update(new_data)
-    with open(json_file, "w") as gen_file:
-        json.dump(data, gen_file)
+    write_generation_log(
+        gen=0,
+        pop=pop,
+        logbook=logbook,
+        json_file=json_file,
+        run=run,
+        cpu_num=config["cpu_num"],
+        log_fronts_gen=args.log_fronts_gen,
+        log_fronts_file=args.log_fronts_file,
+    )
 
     # Begin the generational process
-    if args.gen is not None:
-        loop_start, loop_end = args.gen, args.gen + 1
-    else:
-        loop_start, loop_end = 1, generation_num
+    loop_start, loop_end = resolve_generation_bounds(args.gen, generation_num)
 
     for gen in range(loop_start, loop_end):
         # Warm up the simulation
@@ -329,62 +503,28 @@ if __name__ == "__main__":
         offspring = varAnd(offspring, toolbox, cxpb, mutpb)
 
         # ===========================================
-        # apply simulator to evalution the population
+        # apply simulator to evaluation the population
         # ===========================================
-        # get training data
-        sim_state, input_containers, applications, applications_reverse, input_os = (
-            training_simulation(case=gen)
-        )
-        toolbox.register(
-            "evaluate_individual",
-            eval_individual,
-            sim_state=sim_state,
-            containers=input_containers,
-            os=input_os,
-            applications_reverse=applications_reverse,
-        )
+        register_sim_evaluator(toolbox, gen=gen)
         # Replace the current population by the offspring
         all_pop = pop + offspring
-        individual_results = toolbox.map(toolbox.evaluate_individual, all_pop)
-        energy_list = []
-        communication_list = []
-        for ind, fit in zip(all_pop, individual_results):
-            ind.fitness.values = fit
-            energy_list.append(fit[0])
-            communication_list.append(fit[1])
-        energy_list = np.array(energy_list)
-        communication_list = np.array(communication_list)
+        eval_pop(all_pop, toolbox)
         pop = toolbox.environment_select(all_pop, len(pop))
 
         # ===========================================
-        # ===========================================
-        # ===========================================
         # Append the current generation statistics to the logbook
-        record = mstats.compile(pop) if mstats else {}
-        record["time"] = (
-            time.time() - start_training_time
-        ) / 60  # Time taken for the generation
-        logbook.record(gen=gen, nevals=len(pop), **record)
-        print(logbook.stream)
+        # ===========================================
+        record_generation(logbook, mstats, pop, start_training_time, gen)
 
-        # update json file to save the best training result of each generation
-        fronts = tools.sortNondominated(pop, k=len(pop), first_front_only=True)
-        best_front = []
-        for ind in fronts[0]:
-            best_front.append(str(ind))
-        new_data = {
-            str(gen): {
-                "obj1": round(logbook.chapters["obj1"].select("min")[-1], 2),
-                "obj2": round(logbook.chapters["obj2"].select("min")[-1], 2),
-                "time": round(logbook.chapters["obj1"].select("time")[-1], 2),
-                "best": best_front,
-                "bestCount": len(best_front),
-            }
-        }
-        with open(json_file, "r") as gen_file:
-            data = json.load(gen_file)
-            data["generation"].update(new_data)
-        with open(json_file, "w") as gen_file:
-            json.dump(data, gen_file)
+        write_generation_log(
+            gen=gen,
+            pop=pop,
+            logbook=logbook,
+            json_file=json_file,
+            run=run,
+            cpu_num=config["cpu_num"],
+            log_fronts_gen=args.log_fronts_gen,
+            log_fronts_file=args.log_fronts_file,
+        )
 
     pool.close()

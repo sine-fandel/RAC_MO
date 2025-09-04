@@ -206,8 +206,11 @@ def get_output_file(cpu_num: int, run: int = None, gen: int = None):
         return out_file, False
 
 
-def main():
-    parser = argparse.ArgumentParser()
+def build_test_mogp_parser() -> argparse.ArgumentParser:
+    """Build the ArgumentParser for this test script."""
+    parser = argparse.ArgumentParser(
+        description="Evaluate trained NSGP2 individuals on test data"
+    )
     parser.add_argument(
         "--test_num", type=int, default=0, help="Test case id under Test/ dirs"
     )
@@ -230,7 +233,209 @@ def main():
         default=None,
         help="Only evaluate the specified generation index (default: all)",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--train_dir",
+        type=str,
+        required=True,
+        help=(
+            "Required: folder to read training JSONs from. "
+            "Pass a timestamp folder under results/training (e.g. 20250904-1956) "
+            "or an absolute/relative path."
+        ),
+    )
+    return parser
+
+
+def parse_test_mogp_args(argv=None):
+    return build_test_mogp_parser().parse_args(argv)
+
+
+def resolve_train_dir(arg_value: str | None) -> str:
+    base_train_root = os.path.join(os.getcwd(), "results", "training")
+    if arg_value is None:
+        raise SystemExit("Error: --train_dir is required. Example: --train_dir 20250904-1956")
+    if os.path.isabs(arg_value) or os.path.sep in arg_value:
+        train_dir = arg_value
+    else:
+        train_dir = os.path.join(base_train_root, arg_value)
+    if not os.path.isdir(train_dir):
+        raise FileNotFoundError(f"Training directory not found: {train_dir}")
+    return train_dir
+
+
+def iter_training_runs(train_dir: str, run_filter: int | None):
+    for fname in sorted(os.listdir(train_dir)):
+        if not fname.endswith(".json"):
+            continue
+        if "NSGP2" not in fname:
+            continue
+        run_idx, _cpu_num = parse_run_from_filename(fname)
+        if run_filter is not None and (run_idx is None or run_idx != run_filter):
+            continue
+        path = os.path.join(train_dir, fname)
+        with open(path, "r") as f:
+            train_data = json.load(f)
+        run_key = str(run_idx) if run_idx is not None else fname
+        yield fname, run_key, train_data
+
+
+def ensure_output_root(out_file: str, single_run_mode: bool, run_key: str, train_data: dict):
+    with open(out_file, "r") as f:
+        agg = json.load(f)
+    if single_run_mode:
+        if agg.get("sub_population_size") is None:
+            agg["sub_population_size"] = train_data.get("sub_population_size")
+    else:
+        agg.setdefault("runs", {})
+        if run_key not in agg["runs"]:
+            agg["runs"][run_key] = {
+                "sub_population_size": train_data.get("sub_population_size"),
+                "generation": {},
+            }
+        else:
+            agg["runs"][run_key].setdefault(
+                "sub_population_size", train_data.get("sub_population_size")
+            )
+    with open(out_file, "w") as f:
+        json.dump(agg, f)
+
+
+def extract_front_exprs(gen_payload: dict) -> list[str]:
+    first_front = gen_payload.get("first_front")
+    if isinstance(first_front, list) and (not first_front or isinstance(first_front[0], dict)):
+        exprs = []
+        for e in first_front:
+            if isinstance(e, dict) and e.get("expr") is not None:
+                exprs.append(e.get("expr"))
+        if exprs:
+            return exprs
+    best_list = gen_payload.get("best", [])
+    exprs = []
+    for item in best_list:
+        if isinstance(item, dict) and "expr" in item:
+            exprs.append(item["expr"])
+        elif isinstance(item, str):
+            exprs.append(item)
+    return exprs
+
+
+def ensure_generation_slot(out_file: str, single_run_mode: bool, run_key: str, gen_str: str, size: int):
+    with open(out_file, "r") as f:
+        agg = json.load(f)
+    if single_run_mode:
+        agg.setdefault("generation", {})
+        agg["generation"].setdefault(gen_str, {"front": [], "front_size": size})
+        if "front_size" not in agg["generation"][gen_str]:
+            agg["generation"][gen_str]["front_size"] = size
+    else:
+        agg.setdefault("runs", {})
+        agg["runs"].setdefault(run_key, {})
+        agg["runs"][run_key].setdefault("generation", {})
+        agg["runs"][run_key]["generation"].setdefault(
+            gen_str, {"front": [], "front_size": size}
+        )
+        if "front_size" not in agg["runs"][run_key]["generation"][gen_str]:
+            agg["runs"][run_key]["generation"][gen_str]["front_size"] = size
+    with open(out_file, "w") as f:
+        json.dump(agg, f)
+
+
+def append_eval_result(out_file: str, single_run_mode: bool, run_key: str, gen_str: str, entry: dict) -> int:
+    with open(out_file, "r") as f:
+        agg = json.load(f)
+    if single_run_mode:
+        existing = agg["generation"][gen_str]["front"]
+    else:
+        existing = agg["runs"][run_key]["generation"][gen_str]["front"]
+    next_idx = len(existing)
+    entry = {**entry, "index": next_idx}
+    existing.append(entry)
+    with open(out_file, "w") as f:
+        json.dump(agg, f)
+    return next_idx
+
+
+def annotate_dominated(out_file: str, single_run_mode: bool, run_key: str, gen_str: str) -> tuple[int, int]:
+    with open(out_file, "r") as f:
+        agg = json.load(f)
+    if single_run_mode:
+        gen_node = agg.setdefault("generation", {}).setdefault(gen_str, {})
+    else:
+        gen_node = (
+            agg.setdefault("runs", {})
+            .setdefault(run_key, {})
+            .setdefault("generation", {})
+            .setdefault(gen_str, {})
+        )
+    original = gen_node.get("front", [])
+    _, kept_idx = filter_nondominated_entries(original)
+    kept_set = set(kept_idx)
+    for i, it in enumerate(original):
+        it["dominated"] = i not in kept_set
+    gen_node["first_front_size"] = len(kept_idx)
+    with open(out_file, "w") as f:
+        json.dump(agg, f)
+    return len(kept_idx), len(original)
+
+
+def add_normalized_fields(
+    out_file: str, single_run_mode: bool, run_key: str, gen_str: str
+) -> None:
+    """Add min-max normalized fields for energy and communication to the stored results.
+
+    Normalization is performed over all entries in the generation's stored 'front'.
+    If all values are equal, normalized values default to 0.0.
+    """
+    with open(out_file, "r") as f:
+        agg = json.load(f)
+
+    if single_run_mode:
+        gen_node = agg.setdefault("generation", {}).setdefault(gen_str, {})
+    else:
+        gen_node = (
+            agg.setdefault("runs", {})
+            .setdefault(run_key, {})
+            .setdefault("generation", {})
+            .setdefault(gen_str, {})
+        )
+    entries = gen_node.get("front", [])
+    if not entries:
+        with open(out_file, "w") as f:
+            json.dump(agg, f)
+        return
+
+    energies = [e.get("energy") for e in entries if isinstance(e.get("energy"), (int, float))]
+    comms = [e.get("communication") for e in entries if isinstance(e.get("communication"), (int, float))]
+
+    if energies:
+        e_min, e_max = min(energies), max(energies)
+    else:
+        e_min = e_max = 0.0
+    if comms:
+        c_min, c_max = min(comms), max(comms)
+    else:
+        c_min = c_max = 0.0
+
+    def _norm(v, vmin, vmax):
+        try:
+            return 0.0 if vmax == vmin else (v - vmin) / (vmax - vmin)
+        except Exception:
+            return 0.0
+
+    for it in entries:
+        e_val = it.get("energy")
+        c_val = it.get("communication")
+        if isinstance(e_val, (int, float)):
+            it["energy_norm"] = round(_norm(e_val, e_min, e_max), 6)
+        if isinstance(c_val, (int, float)):
+            it["communication_norm"] = round(_norm(c_val, c_min, c_max), 6)
+
+    with open(out_file, "w") as f:
+        json.dump(agg, f)
+
+
+def main():
+    args = parse_test_mogp_args()
 
     config = get_config(path="./config/communication_mincut_gp.yaml")
     pset = build_pset(config)
@@ -250,100 +455,38 @@ def main():
         cpu_num=config["cpu_num"], run=args.run, gen=args.gen
     )
 
-    train_dir = os.path.join(os.getcwd(), "results", "training")
-    for fname in sorted(os.listdir(train_dir)):
-        if not fname.endswith(".json"):
-            continue
-        if "NSGP2" not in fname:
-            continue
-        run_idx, cpu_num = parse_run_from_filename(fname)
-        if args.run is not None:
-            # If a specific run is requested, skip files that don't match
-            if run_idx is None or run_idx != args.run:
-                continue
-
-        with open(os.path.join(train_dir, fname), "r") as f:
-            train_data = json.load(f)
-
-        run_key = str(run_idx) if run_idx is not None else fname
+    train_dir = resolve_train_dir(args.train_dir)
+    print(f"Reading training JSONs from: {train_dir}")
+    for fname, run_key, train_data in iter_training_runs(train_dir, args.run):
         print(f"==> Evaluating run {run_key} from {fname}")
-        # Ensure container for this run exists in output (or root in single-run mode)
-        with open(out_file, "r") as f:
-            agg = json.load(f)
-        if single_run_mode:
-            # single-run: root holds sub_population_size and generation
-            if agg.get("sub_population_size") is None:
-                agg["sub_population_size"] = train_data.get("sub_population_size")
-        else:
-            if run_key not in agg["runs"]:
-                agg["runs"][run_key] = {
-                    "sub_population_size": train_data.get("sub_population_size"),
-                    "generation": {},
-                }
-            else:
-                agg["runs"][run_key].setdefault(
-                    "sub_population_size", train_data.get("sub_population_size")
-                )
-        with open(out_file, "w") as f:
-            json.dump(agg, f)
+        ensure_output_root(out_file, single_run_mode, run_key, train_data)
 
         generations = train_data.get("generation", {})
         for gen_str, gen_payload in generations.items():
-            # Filter by specific generation if requested
             if args.gen is not None:
                 try:
                     if int(gen_str) != args.gen:
                         continue
                 except ValueError:
-                    # Non-numeric generation keys are skipped when filtering
                     continue
-            best_list = gen_payload.get("best", [])
+
+            parsed_exprs = extract_front_exprs(gen_payload)
             front = []
-            parsed_exprs = []
-            for expr_str in best_list:
-                # Parse dict-like string safely to avoid calling overridden eval()
+            for expr_str in parsed_exprs:
+                # Parse dict-like string safely
                 try:
                     expr_dict = ast.literal_eval(expr_str)
                 except Exception:
-                    # Skip malformed entry
-                    print(
-                        f"[Run {run_key} Gen {gen_str}] Skipping malformed individual expr."
-                    )
+                    print(f"[Run {run_key} Gen {gen_str}] Skipping malformed individual expr.")
                     continue
                 mtree = MultiPrimitiveTree.from_string(expr_dict, pset)
-                front.append(mtree)
-                parsed_exprs.append(expr_str)
+                front.append((mtree, expr_str))
 
-            print(
-                f"[Run {run_key} Gen {gen_str}] Evaluating {len(front)} individuals on test data..."
-            )
+            print(f"[Run {run_key} Gen {gen_str}] Evaluating {len(front)} individuals on test data...")
 
-            # Progressive write: evaluate and write each individual
-            # Ensure generation entry exists with an array to append into
-            with open(out_file, "r") as f:
-                agg = json.load(f)
-            if single_run_mode:
-                agg.setdefault("generation", {})
-                agg["generation"].setdefault(
-                    gen_str, {"front": [], "front_size": len(parsed_exprs)}
-                )
-                if "front_size" not in agg["generation"][gen_str]:
-                    agg["generation"][gen_str]["front_size"] = len(parsed_exprs)
-            else:
-                agg.setdefault("runs", {})
-                agg["runs"].setdefault(run_key, {})
-                agg["runs"][run_key].setdefault("generation", {})
-                agg["runs"][run_key]["generation"].setdefault(
-                    gen_str, {"front": [], "front_size": len(parsed_exprs)}
-                )
-                if "front_size" not in agg["runs"][run_key]["generation"][gen_str]:
-                    agg["runs"][run_key]["generation"][gen_str]["front_size"] = len(
-                        parsed_exprs
-                    )
-            with open(out_file, "w") as f:
-                json.dump(agg, f)
+            ensure_generation_slot(out_file, single_run_mode, run_key, gen_str, len(parsed_exprs))
 
-            for ind, expr_str in zip(front, parsed_exprs):
+            for ind, expr_str in front:
                 energy, comm = eval_individual(
                     ind,
                     sim_state,
@@ -354,63 +497,25 @@ def main():
                     pset,
                     test=True,
                 )
-                # Load, append and write immediately
-                with open(out_file, "r") as f:
-                    agg = json.load(f)
-                if single_run_mode:
-                    existing = agg["generation"][gen_str]["front"]
-                else:
-                    existing = agg["runs"][run_key]["generation"][gen_str]["front"]
-                next_idx = len(existing)
                 entry = {
-                    "index": next_idx,
                     "energy": round(energy, 2),
                     "communication": round(comm, 2),
                 }
                 if not args.hide_expr:
                     entry["expr"] = expr_str
-                existing.append(entry)
-                with open(out_file, "w") as f:
-                    json.dump(agg, f)
+                idx = append_eval_result(out_file, single_run_mode, run_key, gen_str, entry)
                 print(
-                    f"[Run {run_key} Gen {gen_str}] Front {next_idx}: energy={energy:.2f}, communication={comm:.2f} (written)"
+                    f"[Run {run_key} Gen {gen_str}] Front {idx}: energy={energy:.2f}, communication={comm:.2f} (written)"
                 )
-            print(
-                f"[Run {run_key} Gen {gen_str}] Saved {len(parsed_exprs)} results to {out_file}"
-            )
 
-            # After writing all entries for this generation, mark dominated entries
-            with open(out_file, "r") as f:
-                agg = json.load(f)
-            if single_run_mode:
-                gen_node = agg.setdefault("generation", {}).setdefault(gen_str, {})
-            else:
-                gen_node = (
-                    agg.setdefault("runs", {})
-                    .setdefault(run_key, {})
-                    .setdefault("generation", {})
-                    .setdefault(gen_str, {})
-                )
-            original = gen_node.get("front", [])
-            _, kept_idx = filter_nondominated_entries(original)
-            kept_set = set(kept_idx)
-            # Annotate dominated entries, preserve all
-            for i, entry in enumerate(original):
-                if i not in kept_set:
-                    entry["dominated"] = True
-                else:
-                    entry["dominated"] = False
-            # Record sizes and kept indices
-            gen_node["first_front_size"] = len(kept_idx)
-            with open(out_file, "w") as f:
-                json.dump(agg, f)
-            print(
-                f"[Run {run_key} Gen {gen_str}] Marked dominated entries; first-front size: {len(kept_idx)} of {len(original)}"
-            )
+            kept, total = annotate_dominated(out_file, single_run_mode, run_key, gen_str)
+            # Add normalized fields for the evaluated front of this generation
+            add_normalized_fields(out_file, single_run_mode, run_key, gen_str)
+            print(f"[Run {run_key} Gen {gen_str}] Saved {len(parsed_exprs)} results to {out_file}")
+            print(f"[Run {run_key} Gen {gen_str}] Marked dominated entries; first-front size: {kept} of {total}")
 
     print(f"Testing results written to {out_file}")
 
 
 if __name__ == "__main__":
     main()
-
