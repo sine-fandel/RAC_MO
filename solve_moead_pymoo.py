@@ -351,6 +351,10 @@ def init_training_json(json_file: str):
         "max_depth": max_depth,
         "mut_min_depth": mut_min_depth,
         "mut_max_depth": mut_max_depth,
+        # MOEA/D settings
+        "neighborhood_size": moead_T,
+        "neighborhood_select_prob": moead_delta,
+        "max_neighbor_replacements": moead_nr,
         "generation": {},
     }
     with open(json_file, "w") as gen_file:

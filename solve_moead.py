@@ -52,7 +52,9 @@ OUTPUT_DIR = os.path.join(".", "results", "training", _OUTPUT_TS)
 
 
 # ==== MOEA/D toggles & hyperparameters ====
-moead_T = 48  # neighborhood size
+# neighborhood size as a ratio of population size (align with solve_moead_pymoo.py)
+moead_T_ratio = 0.10
+moead_T = max(2, int(moead_T_ratio * sub_population_size0))
 moead_delta = 0.7  # prob. of selecting parents from neighbors
 moead_nr = 2  # max neighbor replacements per offspring(keep diversity)
 
@@ -357,6 +359,10 @@ def init_training_json(json_file: str):
         "max_depth": max_depth,
         "mut_min_depth": mut_min_depth,
         "mut_max_depth": mut_max_depth,
+        # MOEA/D settings
+        "neighborhood_size": moead_T,
+        "neighborhood_select_prob": moead_delta,
+        "max_neighbor_replacements": moead_nr,
         "generation": {},
     }
     with open(json_file, "w") as gen_file:
