@@ -228,7 +228,7 @@ def log_all_fronts(
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         out_file = os.path.join(
             OUTPUT_DIR,
-            f"nsw_Bitbrains_3OS_MOEA-D_core_{cpu_num}_run_{run}_gen_{gen}_fronts.json",
+            f"nsw_Bitbrains_3OS_MOEA-D-PYMOO_core_{cpu_num}_run_{run}_gen_{gen}_fronts.json",
         )
 
     with open(out_file, "w") as f:
