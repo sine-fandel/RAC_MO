@@ -2,13 +2,6 @@ import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
-"""
-training the GPHH to solve dynamic RAC problems
-
-@Author: Zhengxin Fang
-    email: zhengxin.fang@ecs.vuw.ac.nz
-"""
-
 import numpy as np
 import multiprocessing
 import operator
@@ -28,21 +21,11 @@ from optim.multi_tree_gp import (
     cxOnePoint_type_wise,
     mutUniform_multi_tree,
     staticLimit,
-    assignCrowdingDist,
 )
-
-from deap.algorithms import varAnd, varOr
 
 from env.simulator.code.simulator import SimulatorState, Simulator
 
 from utils.utils import *
-
-DECIMAL_PRECISION = 6  # decimal precision for float comparison
-
-# Base output directory under results/training with timestamp like YYYYMMDD-HHMM
-_OUTPUT_TS = datetime.now().strftime("%Y%m%d-%H%M")
-OUTPUT_DIR = os.path.join(".", "results", "training", _OUTPUT_TS)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 config = get_config(path="./config/communication_mincut_gp.yaml")
 sub_population_size0 = config["sub_population_size0"]
@@ -59,6 +42,21 @@ max_depth = config["max_depth"]
 bloat_control = config["bloat_control"]
 mut_min_depth = config["mut_min_depth"]
 mut_max_depth = config["mut_max_depth"]
+
+
+DECIMAL_PRECISION = 6  # decimal precision for float comparison
+
+# Base output directory under results/training with timestamp like YYYYMMDD-HHMM
+_OUTPUT_TS = datetime.now().strftime("%Y%m%d-%H%M")
+OUTPUT_DIR = os.path.join(".", "results", "training", _OUTPUT_TS)
+
+
+# ==== MOEA/D toggles & hyperparameters ====
+# neighborhood size as a ratio of population size (align with solve_moead_pymoo.py)
+moead_T_ratio = 0.10
+moead_T = max(2, int(moead_T_ratio * sub_population_size0))
+moead_delta = 0.7  # prob. of selecting parents from neighbors
+moead_nr = 2  # max neighbor replacements per offspring(keep diversity)
 
 
 pset = {"vm": None, "pm": None}
@@ -122,8 +120,6 @@ toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.ex
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 toolbox.register("compile", gp.compile, pset=pset)
 
-toolbox.register("select", tools.selTournamentDCD)
-toolbox.register("environment_select", tools.selNSGA2)
 toolbox.register("mate", cxOnePoint_type_wise)
 toolbox.register("expr_mut", gp.genFull, min_=mut_min_depth, max_=mut_max_depth)
 toolbox.register("mutate", mutUniform_multi_tree, expr=toolbox.expr_mut, pset=pset)
@@ -186,6 +182,9 @@ def eval_individual(
     )
 
 
+# ==========
+# Logging & helpers (aligned with solve_mogp.py)
+# ==========
 def log_all_fronts(
     pop,
     gen: int,
@@ -231,7 +230,7 @@ def log_all_fronts(
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         out_file = os.path.join(
             OUTPUT_DIR,
-            f"nsw_Bitbrains_3OS_NSGP2_core_{cpu_num}_run_{run}_gen_{gen}_fronts.json",
+            f"nsw_Bitbrains_3OS_MOEA-D_core_{cpu_num}_run_{run}_gen_{gen}_fronts.json",
         )
 
     with open(out_file, "w") as f:
@@ -360,6 +359,10 @@ def init_training_json(json_file: str):
         "max_depth": max_depth,
         "mut_min_depth": mut_min_depth,
         "mut_max_depth": mut_max_depth,
+        # MOEA/D settings
+        "neighborhood_size": moead_T,
+        "neighborhood_select_prob": moead_delta,
+        "max_neighbor_replacements": moead_nr,
         "generation": {},
     }
     with open(json_file, "w") as gen_file:
@@ -373,9 +376,11 @@ def resolve_generation_bounds(selected_gen: int | None, generation_num: int):
     return 1, generation_num
 
 
-def build_solve_mogp_parser() -> argparse.ArgumentParser:
+def build_solve_moead_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Train NSGP2 and optionally dump all Pareto fronts for a generation",
+        description=(
+            "Train MOEA/D-based NSGP2 and optionally dump all Pareto fronts for a generation"
+        ),
     )
     parser.add_argument("-r", "--RUN", help="run", dest="run", type=int, default="0")
     parser.add_argument("-s", "--SEED", help="seed", dest="seed", type=int, default="0")
@@ -412,12 +417,114 @@ def build_solve_mogp_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def parse_solve_mogp_args(argv=None):
-    return build_solve_mogp_parser().parse_args(argv)
+def parse_solve_moead_args(argv=None):
+    return build_solve_moead_parser().parse_args(argv)
+
+
+# ==========================================
+# MOEA/D helpers
+# ==========================================
+from math import sqrt
+
+
+def generate_weight_vectors(n: int):
+    """Evenly spaced weight vectors for bi-objective case."""
+    if n <= 1:
+        return [(1.0, 0.0)]
+    return [(i / (n - 1), 1.0 - i / (n - 1)) for i in range(n)]
+
+
+def build_neighbors(lambdas, T: int):
+    """For each weight vector, return indices of T nearest neighbors by Euclidean distance."""
+    N = len(lambdas)
+    T = min(T, max(1, N - 1))
+    neighbors = []
+    for i, li in enumerate(lambdas):
+        dists = []
+        for j, lj in enumerate(lambdas):
+            if i == j:
+                continue
+            dx = li[0] - lj[0]
+            dy = li[1] - lj[1]
+            d = sqrt(dx * dx + dy * dy)
+            dists.append((d, j))
+        dists.sort(key=lambda x: x[0])
+        neighbors.append([j for _, j in dists[:T]])
+    return neighbors
+
+
+def compute_ideal_point(pop):
+    """Compute ideal point z* from current evaluated population (bi-objective)."""
+    f1_candidates = [ind.fitness.values[0] for ind in pop if ind.fitness.values[0] > 0]
+    f1 = min(f1_candidates)
+    f2_candidates = [ind.fitness.values[1] for ind in pop if ind.fitness.values[1] > 0]
+    f2 = min(f2_candidates)
+
+    return [f1, f2]
+
+
+def tchebycheff(fit_tuple, lam, z_star):
+    """Weighted Tchebycheff scalarization for bi-objective minimization."""
+    return max(
+        lam[0] * abs(fit_tuple[0] - z_star[0]), lam[1] * abs(fit_tuple[1] - z_star[1])
+    )
+
+
+def pick_parent_indices(N, neighbor_indices, delta):
+    """Pick two parent indices: with prob delta from neighbors else from whole population."""
+
+    if np.random.rand() < delta and len(neighbor_indices) >= 2:
+        pool = neighbor_indices
+    else:
+        pool = list(range(N))
+    if len(pool) >= 2:
+        a, b = np.random.choice(pool, size=2, replace=False)
+    else:
+        # fallback in degenerate cases
+        a = pool[0]
+        b = (pool[0] + 1) % N
+    return int(a), int(b)
+
+
+def make_offspring_from_parents(pop, idx_a, idx_b, toolbox, cxpb, mutpb):
+    """Create one offspring using registered GP operators (mate/mutate) decorated with staticLimit."""
+
+    child1 = toolbox.clone(pop[idx_a])
+    child2 = toolbox.clone(pop[idx_b])
+
+    # Crossover
+    if np.random.rand() < cxpb:
+        child1, child2 = toolbox.mate(child1, child2)
+        if hasattr(child1.fitness, "values"):
+            if "values" in child1.fitness.__dict__:
+                try:
+                    del child1.fitness.values
+                except Exception:
+                    pass
+        if hasattr(child2.fitness, "values"):
+            if "values" in child2.fitness.__dict__:
+                try:
+                    del child2.fitness.values
+                except Exception:
+                    pass
+
+    # Choose one of the two to continue
+    base_child = child1
+
+    # Mutation
+    if np.random.rand() < mutpb:
+        (base_child,) = toolbox.mutate(base_child)
+        if hasattr(base_child.fitness, "values"):
+            try:
+                del base_child.fitness.values
+            except Exception:
+                pass
+
+    return base_child
 
 
 if __name__ == "__main__":
-    args = parse_solve_mogp_args()
+    args = parse_solve_moead_args()
 
     set_seed(args.seed)
     run = args.run
@@ -428,10 +535,11 @@ if __name__ == "__main__":
     worst_energy = []
     worst_communication = []
 
+    # Output dir + json setup
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     json_file = os.path.join(
         OUTPUT_DIR,
-        f"nsw_Bitbrains_3OS_NSGP2_{run}_core_{config['cpu_num']}.json",
+        f"nsw_Bitbrains_3OS_MOEA-D_{run}_core_{config['cpu_num']}.json",
     )
     init_training_json(json_file)
 
@@ -445,6 +553,7 @@ if __name__ == "__main__":
 
     pop = toolbox.population(n=sub_population_size0)
 
+    # stats_fit = tools.Statistics(lambda ind: ind.fitness.values)
     stats_size = tools.Statistics(len)
     stats_obj1 = tools.Statistics(lambda ind: ind.fitness.values[0])
     stats_obj2 = tools.Statistics(lambda ind: ind.fitness.values[1])
@@ -473,10 +582,8 @@ if __name__ == "__main__":
 
     record_generation(logbook, mstats, pop, start_time, gen=0)
 
-    # save diversity list
-    fitness_list = []
-    for i in range(len(pop)):
-        fitness_list.append(pop[i].fitness.values[0])
+    # save diversity list (not persisted, kept for parity with mogp)
+    fitness_list = [ind.fitness.values[0] for ind in pop]
 
     write_generation_log(
         gen=0,
@@ -489,31 +596,67 @@ if __name__ == "__main__":
         log_fronts_file=args.log_fronts_file,
     )
 
+    # ==== MOEA/D structures (built after gen 0 eval) ====
+    N = len(pop)
+    lambdas = generate_weight_vectors(N)
+    neighbors = build_neighbors(lambdas, moead_T)
+    z_star = compute_ideal_point(pop)
+    print(f"[gen 0] z*: {z_star}")
+
     # Begin the generational process
     loop_start, loop_end = resolve_generation_bounds(args.gen, generation_num)
-
     for gen in range(loop_start, loop_end):
         # Warm up the simulation
         set_seed(gen)
         start_training_time = time.time()
-        # Select the next generation individuals
-        assignCrowdingDist(pop)
-        offspring = toolbox.select(pop, len(pop))
-        # evolutionary operators
-        offspring = varAnd(offspring, toolbox, cxpb, mutpb)
 
-        # ===========================================
-        # apply simulator to evaluation the population
-        # ===========================================
+        # ===== MOEA/D loop =====
+        # Register evaluator for this generation's case and re-evaluate the
+        # current population so fitness is consistent with the current case
+        # before computing z* and doing neighborhood updates.
         register_sim_evaluator(toolbox, gen=gen)
-        # Replace the current population by the offspring
-        all_pop = pop + offspring
-        eval_pop(all_pop, toolbox)
-        pop = toolbox.environment_select(all_pop, len(pop))
+        eval_pop(pop, toolbox)
 
-        # ===========================================
-        # Append the current generation statistics to the logbook
-        # ===========================================
+        z_star = compute_ideal_point(pop)
+        print(f"[gen {gen}] z*: {z_star}")
+
+        # Random permutation of subproblems to avoid order bias
+        order = np.random.permutation(len(pop))
+
+        # ---- Batch create offsprings for parallel evaluation ----
+        parent_pairs = []
+        offsprings = []
+        for j in order:
+            a, b = pick_parent_indices(len(pop), neighbors[j], moead_delta)
+            parent_pairs.append((j, a, b))
+            child = make_offspring_from_parents(pop, a, b, toolbox, cxpb, mutpb)
+            offsprings.append(child)
+
+        # Evaluate offsprings in parallel
+        offspring_fits = toolbox.map(toolbox.evaluate_individual, offsprings)
+        for child, fit in zip(offsprings, offspring_fits):
+            child.fitness.values = fit
+
+        # ---- Neighborhood update (selection) ----
+        for (j, a, b), child in zip(parent_pairs, offsprings):
+            # Update ideal point with the new evaluated child
+            z_star[0] = min(z_star[0], child.fitness.values[0])
+            z_star[1] = min(z_star[1], child.fitness.values[1])
+
+            # Replace up to moead_nr neighbors if improved under their respective scalarization
+            replaced = 0
+            for k in neighbors[j]:
+                if tchebycheff(child.fitness.values, lambdas[k], z_star) <= tchebycheff(
+                    pop[k].fitness.values, lambdas[k], z_star
+                ):
+                    pop[k] = toolbox.clone(child)
+                    replaced += 1
+                    if replaced >= moead_nr:
+                        break
+
+        # Ensure the logged population reflects current-case evaluations
+        # (safe even if all individuals already have up-to-date fitness).
+        eval_pop(pop, toolbox)
         record_generation(logbook, mstats, pop, start_training_time, gen)
 
         write_generation_log(
@@ -528,3 +671,4 @@ if __name__ == "__main__":
         )
 
     pool.close()
+    pool.join()
