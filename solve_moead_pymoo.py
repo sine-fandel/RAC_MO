@@ -434,15 +434,17 @@ def generate_weight_vectors(n: int):
 
 
 def build_neighbors(lambdas, T: int):
-    """Indices of T nearest neighbors for each weight vector (Euclidean in lambda-space)."""
+    """Indices of T nearest neighbors for each weight vector (including itself).
+
+    Uses Euclidean distance in lambda-space. Self has distance 0 and is
+    included among the first T indices when T >= 1.
+    """
     N = len(lambdas)
-    T = min(T, max(1, N - 1))
+    T = min(T, max(1, N))
     neighbors = []
     for i, li in enumerate(lambdas):
         dists = []
         for j, lj in enumerate(lambdas):
-            if i == j:
-                continue
             dx = li[0] - lj[0]
             dy = li[1] - lj[1]
             d = sqrt(dx * dx + dy * dy)
@@ -660,7 +662,11 @@ if __name__ == "__main__":
         start_training_time = time.time()
 
         # ===== MOEA/D loop =====
+        # Bind evaluator to the current generation's case and re-evaluate
+        # the existing population so z* and the neighborhood update use
+        # current-case fitness values (consistency with solve_moead.py & MOGP).
         register_sim_evaluator(toolbox, gen=gen)
+        eval_pop(pop, toolbox)
 
         z_star = compute_ideal_point(pop)
         z_nad = compute_nadir_point(pop)
@@ -701,6 +707,9 @@ if __name__ == "__main__":
                 normalize=moead_normalize,
             )
 
+        # Ensure logging reflects current-case evaluations even if some
+        # survivors were not replaced this generation.
+        eval_pop(pop, toolbox)
         record_generation(logbook, mstats, pop, start_training_time, gen)
 
         write_generation_log(
