@@ -301,21 +301,16 @@ def ensure_output_root(out_file: str, single_run_mode: bool, run_key: str, train
 
 
 def extract_front_exprs(gen_payload: dict) -> list[str]:
-    first_front = gen_payload.get("first_front")
-    if isinstance(first_front, list) and (not first_front or isinstance(first_front[0], dict)):
-        exprs = []
-        for e in first_front:
-            if isinstance(e, dict) and e.get("expr") is not None:
-                exprs.append(e.get("expr"))
-        if exprs:
-            return exprs
-    best_list = gen_payload.get("best", [])
-    exprs = []
-    for item in best_list:
-        if isinstance(item, dict) and "expr" in item:
-            exprs.append(item["expr"])
-        elif isinstance(item, str):
-            exprs.append(item)
+    """Extract expression strings from the assumed first_front structure.
+
+    Assumes training JSON uses: first_front: [{"communication", "energy", "expr"}, ...]
+    Returns a list of expr strings. Entries missing "expr" are ignored.
+    """
+    first_front = gen_payload.get("first_front", [])
+    exprs: list[str] = []
+    for e in first_front:
+        if isinstance(e, dict) and e.get("expr") is not None:
+            exprs.append(e["expr"])
     return exprs
 
 
