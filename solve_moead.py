@@ -27,6 +27,8 @@ from env.simulator.code.simulator import SimulatorState, Simulator
 
 from utils.utils import *
 
+DECIMAL_PRECISION = 6  # decimal precision for float comparison
+
 config = get_config(path="./config/communication_mincut_gp.yaml")
 sub_population_size0 = config["sub_population_size0"]
 sub_population_size1 = config["sub_population_size1"]
@@ -44,19 +46,19 @@ mut_min_depth = config["mut_min_depth"]
 mut_max_depth = config["mut_max_depth"]
 
 
-DECIMAL_PRECISION = 6  # decimal precision for float comparison
-
 # Base output directory under results/training with timestamp like YYYYMMDD-HHMM
 _OUTPUT_TS = datetime.now().strftime("%Y%m%d-%H%M")
 OUTPUT_DIR = os.path.join(".", "results", "training", _OUTPUT_TS)
 
 
 # ==== MOEA/D toggles & hyperparameters ====
-# neighborhood size as a ratio of population size (align with solve_moead_pymoo.py)
+# neighborhood size as a ratio of population size (10% by default)
 moead_T_ratio = 0.10
 moead_T = max(2, int(moead_T_ratio * sub_population_size0))
 moead_delta = 0.7  # prob. of selecting parents from neighbors
 moead_nr = 2  # max neighbor replacements per offspring(keep diversity)
+# normalization toggle for decomposition robustness
+moead_normalize = True
 
 
 pset = {"vm": None, "pm": None}
@@ -217,7 +219,9 @@ def log_all_fronts(
                     "expr": str(ind),
                     "energy": round(e_val, DECIMAL_PRECISION),
                     "communication": round(c_val, DECIMAL_PRECISION),
-                    "energy_norm": round(_norm(e_val, e_min, e_max), DECIMAL_PRECISION),
+                    "energy_norm": round(
+                        _norm(e_val, e_min, e_max), DECIMAL_PRECISION
+                    ),
                     "communication_norm": round(
                         _norm(c_val, c_min, c_max), DECIMAL_PRECISION
                     ),
@@ -265,7 +269,9 @@ def _build_first_front(pop):
                 "expr": str(ind),
                 "energy": round(e_val, DECIMAL_PRECISION),
                 "communication": round(c_val, DECIMAL_PRECISION),
-                "energy_norm": round(_norm(e_val, e_min, e_max), DECIMAL_PRECISION),
+                "energy_norm": round(
+                    _norm(e_val, e_min, e_max), DECIMAL_PRECISION
+                ),
                 "communication_norm": round(
                     _norm(c_val, c_min, c_max), DECIMAL_PRECISION
                 ),
@@ -292,7 +298,8 @@ def write_generation_log(
                 logbook.chapters["energy"].select("min")[-1], DECIMAL_PRECISION
             ),
             "min_communication": round(
-                logbook.chapters["communication"].select("min")[-1], DECIMAL_PRECISION
+                logbook.chapters["communication"].select("min")[-1],
+                DECIMAL_PRECISION,
             ),
             "time": round(
                 logbook.chapters["energy"].select("time")[-1], DECIMAL_PRECISION
@@ -422,28 +429,37 @@ def parse_solve_moead_args(argv=None):
 
 
 # ==========================================
-# MOEA/D helpers
+# MOEA/D helpers (pymoo-style logic, cloned locally)
 # ==========================================
 from math import sqrt
 
+# Small epsilon used in decomposition to avoid zero-weights dominance
+_MOEAD_EPS = 1e-12
+_NORM_EPS = 1e-12
+
 
 def generate_weight_vectors(n: int):
-    """Evenly spaced weight vectors for bi-objective case."""
+    """Evenly spaced bi-objective weight vectors (like pymoo's reference directions).
+
+    - Returns n tuples (w1, w2) with w1+w2=1.
+    """
     if n <= 1:
         return [(1.0, 0.0)]
     return [(i / (n - 1), 1.0 - i / (n - 1)) for i in range(n)]
 
 
 def build_neighbors(lambdas, T: int):
-    """For each weight vector, return indices of T nearest neighbors by Euclidean distance."""
+    """Indices of T nearest neighbors for each weight vector (including itself).
+
+    Uses Euclidean distance in lambda-space. Self has distance 0 and is
+    included among the first T indices when T >= 1.
+    """
     N = len(lambdas)
-    T = min(T, max(1, N - 1))
+    T = min(T, max(1, N))
     neighbors = []
     for i, li in enumerate(lambdas):
         dists = []
         for j, lj in enumerate(lambdas):
-            if i == j:
-                continue
             dx = li[0] - lj[0]
             dy = li[1] - lj[1]
             d = sqrt(dx * dx + dy * dy)
@@ -454,73 +470,123 @@ def build_neighbors(lambdas, T: int):
 
 
 def compute_ideal_point(pop):
-    """Compute ideal point z* from current evaluated population (bi-objective)."""
-    f1_candidates = [ind.fitness.values[0] for ind in pop if ind.fitness.values[0] > 0]
-    f1 = min(f1_candidates)
-    f2_candidates = [ind.fitness.values[1] for ind in pop if ind.fitness.values[1] > 0]
-    f2 = min(f2_candidates)
+    """Compute the ideal point z* as the component-wise minimum over current population."""
+    f1_candidates = [
+        ind.fitness.values[0] for ind in pop if len(ind.fitness.values) > 0
+    ]
+    f2_candidates = [
+        ind.fitness.values[1] for ind in pop if len(ind.fitness.values) > 0
+    ]
+    return [min(f1_candidates), min(f2_candidates)]
 
+
+def compute_nadir_point(pop):
+    """Compute the nadir point z^nad as component-wise max over current population."""
+    f1 = max(ind.fitness.values[0] for ind in pop if len(ind.fitness.values) > 0)
+    f2 = max(ind.fitness.values[1] for ind in pop if len(ind.fitness.values) > 0)
     return [f1, f2]
 
 
+def normalize_f(f_vals, z_star, z_nad, eps=_NORM_EPS):
+    """Normalize objective vector using (f - z) / (z_nad - z).
+
+    Falls back to zero for dimensions with ~zero range to avoid instability.
+    """
+    d0 = z_nad[0] - z_star[0]
+    d1 = z_nad[1] - z_star[1]
+    n0 = (f_vals[0] - z_star[0]) / d0 if abs(d0) > eps else 0.0
+    n1 = (f_vals[1] - z_star[1]) / d1 if abs(d1) > eps else 0.0
+    return (n0, n1)
+
+
 def tchebycheff(fit_tuple, lam, z_star):
-    """Weighted Tchebycheff scalarization for bi-objective minimization."""
-    return max(
-        lam[0] * abs(fit_tuple[0] - z_star[0]), lam[1] * abs(fit_tuple[1] - z_star[1])
-    )
+    """Weighted Tchebycheff scalarization for minimization (pymoo-style with eps for zeros)."""
+    w1 = lam[0] if lam[0] > 0 else _MOEAD_EPS
+    w2 = lam[1] if lam[1] > 0 else _MOEAD_EPS
+    return max(w1 * abs(fit_tuple[0] - z_star[0]), w2 * abs(fit_tuple[1] - z_star[1]))
 
 
-def pick_parent_indices(N, neighbor_indices, delta):
-    """Pick two parent indices: with prob delta from neighbors else from whole population."""
+def moead_mating_selection(N, neighbor_indices, delta):
+    """Select two parent indices using neighborhood mating with probability `delta`.
 
+    - With prob. `delta`, sample from neighbors; otherwise from the whole population.
+    - Avoid replacement when possible; fall back to simple wrap-around if needed.
+    """
     if np.random.rand() < delta and len(neighbor_indices) >= 2:
         pool = neighbor_indices
     else:
         pool = list(range(N))
+
     if len(pool) >= 2:
         a, b = np.random.choice(pool, size=2, replace=False)
     else:
-        # fallback in degenerate cases
         a = pool[0]
         b = (pool[0] + 1) % N
     return int(a), int(b)
 
 
-def make_offspring_from_parents(pop, idx_a, idx_b, toolbox, cxpb, mutpb):
-    """Create one offspring using registered GP operators (mate/mutate) decorated with staticLimit."""
-
-    child1 = toolbox.clone(pop[idx_a])
-    child2 = toolbox.clone(pop[idx_b])
+def moead_variation(pop, idx_a, idx_b, toolbox, cxpb, mutpb):
+    """Create one offspring using GP crossover/mutation (mirrors pymoo's Variation step)."""
+    p1 = toolbox.clone(pop[idx_a])
+    p2 = toolbox.clone(pop[idx_b])
 
     # Crossover
     if np.random.rand() < cxpb:
-        child1, child2 = toolbox.mate(child1, child2)
-        if hasattr(child1.fitness, "values"):
-            if "values" in child1.fitness.__dict__:
-                try:
-                    del child1.fitness.values
-                except Exception:
-                    pass
-        if hasattr(child2.fitness, "values"):
-            if "values" in child2.fitness.__dict__:
-                try:
-                    del child2.fitness.values
-                except Exception:
-                    pass
-
-    # Choose one of the two to continue
-    base_child = child1
-
-    # Mutation
-    if np.random.rand() < mutpb:
-        (base_child,) = toolbox.mutate(base_child)
-        if hasattr(base_child.fitness, "values"):
+        p1, p2 = toolbox.mate(p1, p2)
+        if hasattr(p1.fitness, "values"):
             try:
-                del base_child.fitness.values
+                del p1.fitness.values
+            except Exception:
+                pass
+        if hasattr(p2.fitness, "values"):
+            try:
+                del p2.fitness.values
             except Exception:
                 pass
 
-    return base_child
+    # Choose one and mutate
+    child = p1
+    if np.random.rand() < mutpb:
+        (child,) = toolbox.mutate(child)
+        if hasattr(child.fitness, "values"):
+            try:
+                del child.fitness.values
+            except Exception:
+                pass
+    return child
+
+
+def moead_update_ideal_point(z_star, fit_values):
+    """Update ideal point with offspring fitness values (component-wise min)."""
+    z_star[0] = min(z_star[0], fit_values[0])
+    z_star[1] = min(z_star[1], fit_values[1])
+
+
+def moead_replace_neighbors(
+    pop, child, neighbors_j, lambdas, z_star, z_nad, nr, toolbox, normalize=True
+):
+    """Replace up to `nr` neighbors if the offspring improves their scalarized value.
+
+    This mirrors pymoo's neighborhood update using the chosen decomposition function.
+    """
+    replaced = 0
+    for k in neighbors_j:
+        if normalize:
+            f_child = normalize_f(child.fitness.values, z_star, z_nad)
+            f_curr = normalize_f(pop[k].fitness.values, z_star, z_nad)
+            z_ref = (0.0, 0.0)
+        else:
+            f_child = child.fitness.values
+            f_curr = pop[k].fitness.values
+            z_ref = z_star
+
+        if tchebycheff(f_child, lambdas[k], z_ref) <= tchebycheff(
+            f_curr, lambdas[k], z_ref
+        ):
+            pop[k] = toolbox.clone(child)
+            replaced += 1
+            if replaced >= nr:
+                break
 
 
 if __name__ == "__main__":
@@ -611,10 +677,15 @@ if __name__ == "__main__":
         start_training_time = time.time()
 
         # ===== MOEA/D loop =====
+        # Bind evaluator to the current generation's case and re-evaluate
+        # the existing population so z* and the neighborhood update use
+        # current-case fitness values (consistency with solve_moead.py & MOGP).
         register_sim_evaluator(toolbox, gen=gen)
+        eval_pop(pop, toolbox)
 
         z_star = compute_ideal_point(pop)
-        print(f"[gen {gen}] z*: {z_star}")
+        z_nad = compute_nadir_point(pop)
+        print(f"[gen {gen}] z*: {z_star}, z^nad: {z_nad}")
 
         # Random permutation of subproblems to avoid order bias
         order = np.random.permutation(len(pop))
@@ -623,9 +694,9 @@ if __name__ == "__main__":
         parent_pairs = []
         offsprings = []
         for j in order:
-            a, b = pick_parent_indices(len(pop), neighbors[j], moead_delta)
+            a, b = moead_mating_selection(len(pop), neighbors[j], moead_delta)
             parent_pairs.append((j, a, b))
-            child = make_offspring_from_parents(pop, a, b, toolbox, cxpb, mutpb)
+            child = moead_variation(pop, a, b, toolbox, cxpb, mutpb)
             offsprings.append(child)
 
         # Evaluate offsprings in parallel
@@ -636,20 +707,24 @@ if __name__ == "__main__":
         # ---- Neighborhood update (selection) ----
         for (j, a, b), child in zip(parent_pairs, offsprings):
             # Update ideal point with the new evaluated child
-            z_star[0] = min(z_star[0], child.fitness.values[0])
-            z_star[1] = min(z_star[1], child.fitness.values[1])
+            moead_update_ideal_point(z_star, child.fitness.values)
 
-            # Replace up to moead_nr neighbors if improved under their respective scalarization
-            replaced = 0
-            for k in neighbors[j]:
-                if tchebycheff(child.fitness.values, lambdas[k], z_star) <= tchebycheff(
-                    pop[k].fitness.values, lambdas[k], z_star
-                ):
-                    pop[k] = toolbox.clone(child)
-                    replaced += 1
-                    if replaced >= moead_nr:
-                        break
+            # Neighborhood replacement (bounded by moead_nr)
+            moead_replace_neighbors(
+                pop,
+                child,
+                neighbors[j],
+                lambdas,
+                z_star,
+                z_nad,
+                moead_nr,
+                toolbox,
+                normalize=moead_normalize,
+            )
 
+        # Ensure logging reflects current-case evaluations even if some
+        # survivors were not replaced this generation.
+        eval_pop(pop, toolbox)
         record_generation(logbook, mstats, pop, start_training_time, gen)
 
         write_generation_log(

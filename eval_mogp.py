@@ -19,6 +19,10 @@ from utils.utils import testing_simulation, get_config
 from env.simulator.code.simulator import Simulator, SimulatorState
 
 
+# Unified decimal precision for rounding, aligned with solve_mogp/solve_moead_pymoo
+DECIMAL_PRECISION = 6
+
+
 def protectedDiv(left, right):
     with np.errstate(divide="ignore", invalid="ignore"):
         x = np.divide(left, right)
@@ -421,9 +425,13 @@ def add_normalized_fields(
         e_val = it.get("energy")
         c_val = it.get("communication")
         if isinstance(e_val, (int, float)):
-            it["energy_norm"] = round(_norm(e_val, e_min, e_max), 6)
+            it["energy_norm"] = round(
+                _norm(e_val, e_min, e_max), DECIMAL_PRECISION
+            )
         if isinstance(c_val, (int, float)):
-            it["communication_norm"] = round(_norm(c_val, c_min, c_max), 6)
+            it["communication_norm"] = round(
+                _norm(c_val, c_min, c_max), DECIMAL_PRECISION
+            )
 
     with open(out_file, "w") as f:
         json.dump(agg, f)
@@ -493,8 +501,8 @@ def main():
                     test=True,
                 )
                 entry = {
-                    "energy": round(energy, 2),
-                    "communication": round(comm, 2),
+                    "energy": round(energy, DECIMAL_PRECISION),
+                    "communication": round(comm, DECIMAL_PRECISION),
                 }
                 if not args.hide_expr:
                     entry["expr"] = expr_str
