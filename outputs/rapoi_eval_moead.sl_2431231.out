@@ -1,0 +1,71 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) libfabric/1.19.0
+
+The following have been reloaded with a version change:
+  1) hwloc/2.7.2 => hwloc/2.9.2
+
+Reading training JSONs from: /nfs/home/fangz2/wenyi/RAC_copy/results/training/eval
+==> Evaluating run 0 from nsw_Bitbrains_3OS_MOEA-D_0_core_40.json
+[Run 0 Gen 59] Evaluating 58 individuals on test data...
+[Run 0 Gen 59] Front 0: energy=92516.94, communication=72553.64 (written)
+[Run 0 Gen 59] Front 1: energy=92516.94, communication=72553.64 (written)
+[Run 0 Gen 59] Front 2: energy=92625.91, communication=72361.60 (written)
+[Run 0 Gen 59] Front 3: energy=82158.03, communication=79189.24 (written)
+[Run 0 Gen 59] Front 4: energy=82158.03, communication=79189.24 (written)
+[Run 0 Gen 59] Front 5: energy=82157.86, communication=79191.53 (written)
+[Run 0 Gen 59] Front 6: energy=82158.03, communication=79189.24 (written)
+[Run 0 Gen 59] Front 7: energy=82158.03, communication=79189.24 (written)
+[Run 0 Gen 59] Front 8: energy=82158.03, communication=79189.24 (written)
+[Run 0 Gen 59] Front 9: energy=82158.03, communication=79189.24 (written)
+[Run 0 Gen 59] Front 10: energy=95581.28, communication=70202.96 (written)
+[Run 0 Gen 59] Front 11: energy=95581.28, communication=70202.96 (written)
+[Run 0 Gen 59] Front 12: energy=95581.28, communication=70202.96 (written)
+[Run 0 Gen 59] Front 13: energy=95581.28, communication=70202.96 (written)
+[Run 0 Gen 59] Front 14: energy=94068.65, communication=70852.76 (written)
+[Run 0 Gen 59] Front 15: energy=94064.99, communication=70852.43 (written)
+[Run 0 Gen 59] Front 16: energy=94064.99, communication=70852.43 (written)
+[Run 0 Gen 59] Front 17: energy=94068.79, communication=70852.43 (written)
+[Run 0 Gen 59] Front 18: energy=94068.79, communication=70852.43 (written)
+[Run 0 Gen 59] Front 19: energy=94074.74, communication=70852.76 (written)
+[Run 0 Gen 59] Front 20: energy=94074.74, communication=70852.76 (written)
+[Run 0 Gen 59] Front 21: energy=94068.79, communication=70852.43 (written)
+[Run 0 Gen 59] Front 22: energy=94068.79, communication=70852.43 (written)
+[Run 0 Gen 59] Front 23: energy=94074.74, communication=70852.76 (written)
+[Run 0 Gen 59] Front 24: energy=94074.74, communication=70852.76 (written)
+[Run 0 Gen 59] Front 25: energy=94161.49, communication=70852.76 (written)
+[Run 0 Gen 59] Front 26: energy=94161.49, communication=70852.76 (written)
+[Run 0 Gen 59] Front 27: energy=82160.76, communication=79197.39 (written)
+[Run 0 Gen 59] Front 28: energy=82160.76, communication=79197.39 (written)
+[Run 0 Gen 59] Front 29: energy=80911.08, communication=74189.98 (written)
+[Run 0 Gen 59] Front 30: energy=80911.08, communication=74189.98 (written)
+[Run 0 Gen 59] Front 31: energy=80822.01, communication=74179.60 (written)
+[Run 0 Gen 59] Front 32: energy=78431.15, communication=86103.96 (written)
+[Run 0 Gen 59] Front 33: energy=78983.33, communication=87619.09 (written)
+[Run 0 Gen 59] Front 34: energy=78983.33, communication=87619.09 (written)
+[Run 0 Gen 59] Front 35: energy=79791.54, communication=85915.64 (written)
+[Run 0 Gen 59] Front 36: energy=78859.22, communication=86924.44 (written)
+[Run 0 Gen 59] Front 37: energy=78859.22, communication=86924.44 (written)
+[Run 0 Gen 59] Front 38: energy=78859.22, communication=86924.44 (written)
+[Run 0 Gen 59] Front 39: energy=78859.22, communication=86924.44 (written)
+[Run 0 Gen 59] Front 40: energy=78859.22, communication=86924.44 (written)
+[Run 0 Gen 59] Front 41: energy=78859.22, communication=86924.44 (written)
+[Run 0 Gen 59] Front 42: energy=78859.22, communication=86924.44 (written)
+[Run 0 Gen 59] Front 43: energy=78570.43, communication=92507.65 (written)
+[Run 0 Gen 59] Front 44: energy=78570.43, communication=92507.65 (written)
+[Run 0 Gen 59] Front 45: energy=78558.23, communication=92507.65 (written)
+[Run 0 Gen 59] Front 46: energy=78558.23, communication=92507.65 (written)
+[Run 0 Gen 59] Front 47: energy=78558.19, communication=92507.65 (written)
+[Run 0 Gen 59] Front 48: energy=78558.19, communication=92507.65 (written)
+[Run 0 Gen 59] Front 49: energy=78558.19, communication=92507.65 (written)
+[Run 0 Gen 59] Front 50: energy=78558.19, communication=92507.65 (written)
+[Run 0 Gen 59] Front 51: energy=78558.19, communication=92507.65 (written)
+[Run 0 Gen 59] Front 52: energy=78646.61, communication=87472.92 (written)
+[Run 0 Gen 59] Front 53: energy=78646.61, communication=87472.92 (written)
+[Run 0 Gen 59] Front 54: energy=78632.77, communication=87472.92 (written)
+[Run 0 Gen 59] Front 55: energy=78617.29, communication=89576.09 (written)
+[Run 0 Gen 59] Front 56: energy=78442.51, communication=93076.80 (written)
+[Run 0 Gen 59] Front 57: energy=78442.51, communication=93076.80 (written)
+[Run 0 Gen 59] Saved 58 results to /nfs/home/fangz2/wenyi/RAC_copy/results/testing/20250906-2310/nsw_Bitbrains_3OS_MOEA-D_core_40_run_0_gen_59.json
+[Run 0 Gen 59] Marked dominated entries; first-front size: 12 of 58
+Testing results written to /nfs/home/fangz2/wenyi/RAC_copy/results/testing/20250906-2310/nsw_Bitbrains_3OS_MOEA-D_core_40_run_0_gen_59.json

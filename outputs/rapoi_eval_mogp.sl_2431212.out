@@ -1,0 +1,37 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) libfabric/1.19.0
+
+The following have been reloaded with a version change:
+  1) hwloc/2.7.2 => hwloc/2.9.2
+
+Reading training JSONs from: /nfs/home/fangz2/wenyi/RAC_copy/results/training/eval
+==> Evaluating run 0 from nsw_Bitbrains_3OS_NSGP2_0_core_40.json
+[Run 0 Gen 49] Evaluating 24 individuals on test data...
+[Run 0 Gen 49] Front 0: energy=77900.16, communication=80555.85 (written)
+[Run 0 Gen 49] Front 1: energy=77900.16, communication=80555.85 (written)
+[Run 0 Gen 49] Front 2: energy=82715.39, communication=72234.34 (written)
+[Run 0 Gen 49] Front 3: energy=82715.39, communication=72234.34 (written)
+[Run 0 Gen 49] Front 4: energy=78650.67, communication=76683.04 (written)
+[Run 0 Gen 49] Front 5: energy=78650.67, communication=76683.04 (written)
+[Run 0 Gen 49] Front 6: energy=78650.67, communication=76683.04 (written)
+[Run 0 Gen 49] Front 7: energy=77708.32, communication=89709.80 (written)
+[Run 0 Gen 49] Front 8: energy=77708.32, communication=89709.80 (written)
+[Run 0 Gen 49] Front 9: energy=77628.51, communication=89553.15 (written)
+[Run 0 Gen 49] Front 10: energy=77628.51, communication=89553.15 (written)
+[Run 0 Gen 49] Front 11: energy=78495.71, communication=75090.54 (written)
+[Run 0 Gen 49] Front 12: energy=78495.71, communication=75090.54 (written)
+[Run 0 Gen 49] Front 13: energy=78495.71, communication=75090.54 (written)
+[Run 0 Gen 49] Front 14: energy=78495.71, communication=75090.54 (written)
+[Run 0 Gen 49] Front 15: energy=84471.72, communication=77694.90 (written)
+[Run 0 Gen 49] Front 16: energy=77533.67, communication=93374.18 (written)
+[Run 0 Gen 49] Front 17: energy=77533.67, communication=93374.18 (written)
+[Run 0 Gen 49] Front 18: energy=83177.85, communication=83008.76 (written)
+[Run 0 Gen 49] Front 19: energy=78370.05, communication=90772.52 (written)
+[Run 0 Gen 49] Front 20: energy=77296.60, communication=91277.32 (written)
+[Run 0 Gen 49] Front 21: energy=83564.11, communication=77149.56 (written)
+[Run 0 Gen 49] Front 22: energy=78240.54, communication=91403.59 (written)
+[Run 0 Gen 49] Front 23: energy=84586.28, communication=74243.75 (written)
+[Run 0 Gen 49] Saved 24 results to /nfs/home/fangz2/wenyi/RAC_copy/results/testing/20250906-2242/nsw_Bitbrains_3OS_NSGP2_core_40_run_0_gen_49.json
+[Run 0 Gen 49] Marked dominated entries; first-front size: 11 of 24
+Testing results written to /nfs/home/fangz2/wenyi/RAC_copy/results/testing/20250906-2242/nsw_Bitbrains_3OS_NSGP2_core_40_run_0_gen_49.json
