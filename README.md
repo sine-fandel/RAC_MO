@@ -6,4 +6,4 @@
 `squeue --me`
 
 ### Kill job
-`scancel 2422751`
+`scancel jobid`
