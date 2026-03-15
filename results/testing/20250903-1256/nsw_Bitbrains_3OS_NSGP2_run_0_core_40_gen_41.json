@@ -1,1 +1,3 @@
-{"sub_population_size": 1024, "generation": {"41": {"front": [{"index": 0, "energy": 77970.8, "communication": 82129.63}, {"index": 1, "energy": 77970.8, "communication": 82129.63}, {"index": 2, "energy": 77970.84, "communication": 82492.54}], "front_size": 37}}}
+version https://git-lfs.github.com/spec/v1
+oid sha256:1f1de57f1c2bafc0dd1b1c4b19c9ce4cf63d7d95be365219a4b55f34d3cca612
+size 263
