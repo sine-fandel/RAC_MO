@@ -2,7 +2,7 @@
 
 ---
 
-### 1. Clone the Repository
+### Clone the Repository
 
 This repository uses **Git LFS** to store large files.  
 Please install Git LFS before cloning the repository.
