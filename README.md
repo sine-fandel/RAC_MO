@@ -1,26 +1,23 @@
-# Project Name
-
-Multi-Objective GP for Resource Allocation in Container-based Clouds
+## Multi-Objective GP for Resource Allocation in Container-based Clouds
 
 ---
 
-# 1. Clone the Repository
+### 1. Clone the Repository
 
 This repository uses **Git LFS** to store large files.  
 Please install Git LFS before cloning the repository.
 
-## Install Git LFS
+#### Install Git LFS
 
 Mac: `brew install git-lfs`
----------
+
 Ubantu: `sudo apt install git-lfs`
----------
+
 Windows:
 Download and install from:  
 https://git-lfs.github.com
----------
 
-After installation, initialize Git LFS:
+After installation, initialize Git LFS
 
 
 ### Dependencies Install
