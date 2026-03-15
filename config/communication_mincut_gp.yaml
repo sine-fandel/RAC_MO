@@ -1,13 +1,12 @@
 name: communication_mincut_gp
-sub_population_size0: 1024
-sub_population_size1: 1024
-generation_num: 70
+population_size: 100
+generation_num: 51
 
 # GP parameters
 arity0: 9
 arity1: 10
 cxpb: 0.8
-mutpb: 0.1
+mutpb: 0.2
 elitism_size: 5
 tournament_size: 7
 min_depth: 1
@@ -17,4 +16,4 @@ mut_max_depth: 4
 bloat_control: 8
 
 # multi-process
-cpu_num: 40
+cpu_num: 8

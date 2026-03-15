@@ -7,7 +7,7 @@ from env.simulator.code.simulator.io.loading import load_init_env_data, load_con
 
 import yaml,os
 
-import math
+import random
 
 import sys
 
@@ -425,6 +425,7 @@ def eval(i: int, energy_list, communication_list) -> float:
     return 0.5 * energy_list[i] / np.max(energy_list) + 0.5 * communication_list[i] / np.max(communication_list),
 
 def set_seed(seed):
+    random.seed(seed)
     np.random.seed(seed)
 
 def get_config(path: str):

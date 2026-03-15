@@ -9,4 +9,4 @@
 module load GCCcore/13.2.0 Python/3.11.5
 source ../../zhengxin/venv/bin/activate
 
-python3 eval_moead.py --run 0 --gen $1 --train_dir eval
+python3 -m z.moead.eval --run $1 --gen $2 --train_dir 5OS

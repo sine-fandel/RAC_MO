@@ -17,6 +17,7 @@ from datetime import datetime
 import os
 import json
 import argparse
+import copy
 
 from deap import base
 from deap import creator
@@ -37,18 +38,14 @@ from env.simulator.code.simulator import SimulatorState, Simulator
 
 from utils.utils import *
 
+
 DECIMAL_PRECISION = 6  # decimal precision for float comparison
 
 # Base output directory under results/training with timestamp like YYYYMMDD-HHMM
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_OUTPUT_TS = datetime.now().strftime("%Y%m%d-%H%M")
-OUTPUT_DIR = os.path.join(_SCRIPT_DIR, "output", "training", _OUTPUT_TS)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+
 
 config = get_config(path="./config/communication_mincut_gp.yaml")
-sub_population_size0 = config["sub_population_size0"]
-sub_population_size1 = config["sub_population_size1"]
-generation_num = config["generation_num"]
 cxpb = config["cxpb"]
 mutpb = config["mutpb"]
 arity0 = config["arity0"]
@@ -128,6 +125,9 @@ toolbox.register("environment_select", tools.selNSGA2)
 toolbox.register("mate", cxOnePoint_type_wise)
 toolbox.register("expr_mut", gp.genFull, min_=mut_min_depth, max_=mut_max_depth)
 toolbox.register("mutate", mutUniform_multi_tree, expr=toolbox.expr_mut, pset=pset)
+# restricted subtree mutation for local search
+toolbox.register("rs_expr_mut", gp.genFull, min_=1, max_=2)
+toolbox.register("rs_mutate", mutUniform_multi_tree, expr=toolbox.expr_mut, pset=pset)
 
 toolbox.decorate(
     "mate", staticLimit(key=operator.attrgetter("height"), max_value=bloat_control)
@@ -195,6 +195,8 @@ def log_all_fronts(
     out_file: str | None = None,
     verbose: bool = False,
     log_fn=print,
+    os_dataset: str = None,
+    output_dir: str = None
 ):
     """Log all Pareto fronts for the given population to a JSON file."""
     fronts = tools.sortNondominated(pop, k=len(pop), first_front_only=False)
@@ -229,10 +231,10 @@ def log_all_fronts(
 
     # Default output path if none is provided
     if out_file is None:
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
         out_file = os.path.join(
-            OUTPUT_DIR,
-            f"nsw_Bitbrains_3OS_NSGP2_core_{cpu_num}_run_{run}_gen_{gen}_fronts.json",
+            output_dir,
+            f"nsw_Bitbrains_{os_dataset}_NSGP2_core_{cpu_num}_run_{run}_gen_{gen}_fronts.json",
         )
 
     with open(out_file, "w") as f:
@@ -245,9 +247,10 @@ def log_all_fronts(
 
 
 def _build_first_front(pop):
-    """Return first Pareto front entries with expr/energy/communication."""
-    fronts = tools.sortNondominated(pop, k=len(pop), first_front_only=True)
-    first = list(fronts[0])
+    """Return sorted Pareto front entries with expr/energy/communication."""
+    fronts = tools.sortNondominated(pop, k=len(pop), first_front_only=True)[0]
+    fronts = sorted(fronts, key=lambda ind: ind.fitness.values[0])
+    first = list(fronts)
 
     # Min-max for the first front only
     energies = [ind.fitness.values[0] for ind in first]
@@ -285,6 +288,8 @@ def write_generation_log(
     cpu_num: int,
     log_fronts_gen: int | None = None,
     log_fronts_file: str | None = None,
+    os_dataset: str = None,
+    output_dir: str = None
 ):
     """Write summary and first front for a generation; optionally dump all fronts."""
     best_front = _build_first_front(pop)
@@ -317,6 +322,8 @@ def write_generation_log(
             cpu_num=cpu_num,
             out_file=log_fronts_file,
             verbose=True,
+            os_dataset=os_dataset,
+            output_dir=output_dir
         )
 
 
@@ -328,7 +335,7 @@ def record_generation(logbook, mstats, pop, start_time, gen: int):
     print(logbook.stream)
 
 
-def register_sim_evaluator(toolbox, gen: int, fixed_case: int | None = None):
+def register_sim_evaluator(toolbox, gen: int, fixed_case: int | None = None, os_dataset: str = None):
     """Register evaluate_individual with simulation data for the given generation or a fixed case.
 
     If fixed_case is not None, uses that case for all generations; otherwise
@@ -336,7 +343,7 @@ def register_sim_evaluator(toolbox, gen: int, fixed_case: int | None = None):
     """
     case_id = fixed_case if fixed_case is not None else gen
     sim_state, input_containers, applications, applications_reverse, input_os = (
-        training_simulation(case=case_id)
+        training_simulation(case=case_id, os_dataset=os_dataset)
     )
     toolbox.register(
         "evaluate_individual",
@@ -355,9 +362,9 @@ def eval_pop(individuals, toolbox):
         ind.fitness.values = fit
 
 
-def init_training_json(json_file: str, training_case_used: str = "Dynamic"):
+def init_training_json(json_file: str, training_case_used: str = "Dynamic", population_size: int = None):
     training_result = {
-        "sub_population_size": sub_population_size0,
+        "population_size": population_size,
         "cxpb": cxpb,
         "mutpb": mutpb,
         "elitism_size": elitism_size,
@@ -373,10 +380,8 @@ def init_training_json(json_file: str, training_case_used: str = "Dynamic"):
         json.dump(training_result, gen_file)
 
 
-def resolve_generation_bounds(selected_gen: int | None, generation_num: int):
+def resolve_generation_bounds(generation_num: int):
     """Return (loop_start, loop_end) based on optional selected generation."""
-    if selected_gen is not None:
-        return selected_gen, selected_gen + 1
     return 1, generation_num
 
 
@@ -385,7 +390,13 @@ def build_solve_mogp_parser() -> argparse.ArgumentParser:
         description="Train NSGP2 and optionally dump all Pareto fronts for a generation",
     )
     parser.add_argument("-r", "--RUN", help="run", dest="run", type=int, default="0")
-    parser.add_argument("-s", "--SEED", help="seed", dest="seed", type=int, default="0")
+    parser.add_argument(
+        "--pop",
+        dest="pop",
+        type=int,
+        default=1024,
+        help="define the population size"
+    )
     parser.add_argument(
         "--training-case",
         dest="training_case",
@@ -397,14 +408,20 @@ def build_solve_mogp_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--os",
+        dest="os",
+        type=str,
+        default="3OS",
+        help=(
+            "define the number of OS"
+        ),
+    )
+    parser.add_argument(
         "--gen",
         dest="gen",
         type=int,
-        default=None,
-        help=(
-            "Run only this generation index (range [gen, gen+1)). "
-            "If omitted, runs 1..generation_num-1."
-        ),
+        default=50,
+        help="runs 1..generation_num-1."
     )
     parser.add_argument(
         "--log-fronts-gen",
@@ -436,7 +453,16 @@ def parse_solve_mogp_args(argv=None):
 if __name__ == "__main__":
     args = parse_solve_mogp_args()
 
-    set_seed(args.seed)
+    # configurations
+    os_dataset = args.os
+    population_size = args.pop
+    generation_num = args.gen
+
+    # _OUTPUT_TS = datetime.now().strftime("%Y%m%d-%H%M")
+    output_dir = os.path.join(_SCRIPT_DIR, "output", "training", f"POP_{population_size}_GEN_{generation_num}", os_dataset)
+    os.makedirs(output_dir, exist_ok=True)
+
+    set_seed(args.run)
     run = args.run
 
     valid_energy = []
@@ -445,14 +471,13 @@ if __name__ == "__main__":
     worst_energy = []
     worst_communication = []
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
     json_file = os.path.join(
-        OUTPUT_DIR,
-        f"nsw_Bitbrains_3OS_NSGP2_{run}_core_{config['cpu_num']}.json",
+        output_dir,
+        f"Bitbrains_{os_dataset}_NSGP2_{run}.json",
     )
     # Determine and record training case usage in the output JSON
     training_case_used = str(args.training_case) if args.training_case is not None else "Dynamic"
-    init_training_json(json_file, training_case_used=training_case_used)
+    init_training_json(json_file, training_case_used=training_case_used, population_size=population_size)
 
     start_time = time.time()
 
@@ -462,7 +487,7 @@ if __name__ == "__main__":
     pool = multiprocessing.Pool(cpu_count)  # use multi-process of evaluation
     toolbox.register("map", pool.map)
 
-    pop = toolbox.population(n=sub_population_size0)
+    pop = toolbox.population(n=population_size)
 
     stats_size = tools.Statistics(len)
     stats_obj1 = tools.Statistics(lambda ind: ind.fitness.values[0])
@@ -485,7 +510,7 @@ if __name__ == "__main__":
     # ===========================================
     # apply simulator to evaluation for generation 0
     # ===========================================
-    register_sim_evaluator(toolbox, gen=0, fixed_case=args.training_case)
+    register_sim_evaluator(toolbox, gen=0, fixed_case=args.training_case, os_dataset=os_dataset)
 
     # Evaluate generation 0 population
     eval_pop(pop, toolbox)
@@ -506,14 +531,16 @@ if __name__ == "__main__":
         cpu_num=config["cpu_num"],
         log_fronts_gen=args.log_fronts_gen,
         log_fronts_file=args.log_fronts_file,
+        os_dataset=os_dataset,
+        output_dir=output_dir
     )
 
     # Begin the generational process
-    loop_start, loop_end = resolve_generation_bounds(args.gen, generation_num)
+    loop_start, loop_end = resolve_generation_bounds(generation_num)
 
     for gen in range(loop_start, loop_end):
         # Warm up the simulation
-        set_seed(gen)
+        # set_seed(gen)
         start_training_time = time.time()
         # Select the next generation individuals
         assignCrowdingDist(pop)
@@ -524,7 +551,7 @@ if __name__ == "__main__":
         # ===========================================
         # apply simulator to evaluation the population
         # ===========================================
-        register_sim_evaluator(toolbox, gen=gen, fixed_case=args.training_case)
+        register_sim_evaluator(toolbox, gen=0, fixed_case=args.training_case, os_dataset=os_dataset)
         # Replace the current population by the offspring
         all_pop = pop + offspring
         eval_pop(all_pop, toolbox)
@@ -544,6 +571,8 @@ if __name__ == "__main__":
             cpu_num=config["cpu_num"],
             log_fronts_gen=args.log_fronts_gen,
             log_fronts_file=args.log_fronts_file,
+            os_dataset=os_dataset,
+            output_dir=output_dir
         )
 
     pool.close()

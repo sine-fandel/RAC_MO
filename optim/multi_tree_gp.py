@@ -5,18 +5,75 @@ from functools import wraps
 import random
 from enum import Enum
 from deap.gp import PrimitiveTree, cxOnePoint, mutUniform, PrimitiveSet
+from deap import gp, base
+from collections.abc import Mapping
 
 import sys
 
 import numpy as np
 
 from utils.utils import *
+# from llm_seeding import generate_llm_mt_candidates
+
 
 __type__ = object
+
+# APIKEY = "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"
+APIKEY = "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"
+
+
 
 class TerminalTypeEnum(Enum):
     VM = "vm"
     PM = "pm"
+
+pset = {"vm": None, "pm": None}
+config = get_config(path="./config/communication_mincut_gp.yaml")
+arity0 = config["arity0"]
+arity1 = config["arity1"]
+min_depth = config["min_depth"]
+max_depth = config["max_depth"]
+bloat_control = config["bloat_control"]
+
+TERMINAL_NODES = {
+    "vm": {
+        "ARG0": "container_cpu",
+        "ARG1": "container_memories",
+        "ARG2": "remaining_cpu_capacity",
+        "ARG3": "remaining_memory_capacity",
+        "ARG4": "vm_cpu_overhead",
+        "ARG5": "vm_memory_overhead",
+        "ARG6": "vm_pm_innerc",
+        "ARG7": "vm_pm_outerc",
+        "ARG8": "affinity",
+    },
+    "pm": {
+        "ARG0": "vm_cpu_capacity",
+        "ARG1": "vm_memory_capacity",
+        "ARG2": "remaining_cpu_capacity",
+        "ARG3": "remaining_memory_capacity",
+        "ARG4": "pm_cpu_capacity",
+        "ARG5": "pm_memory_capacity",
+        "ARG6": "pm_core",
+        "ARG7": "pm_innerc",
+        "ARG8": "pm_outerc",
+        "ARG9": "affinity",
+    },
+}
+
+
+for type, item in pset.items():
+    if type == "vm":
+        pset[type] = gp.PrimitiveSet(type, arity0)
+        pset[type].renameArguments(**TERMINAL_NODES["vm"])
+    else:
+        pset[type] = gp.PrimitiveSet(type, arity1)
+        pset[type].renameArguments(**TERMINAL_NODES["pm"])
+    pset[type].addPrimitive(np.add, 2)
+    pset[type].addPrimitive(np.subtract, 2)
+    pset[type].addPrimitive(np.multiply, 2)
+    pset[type].addPrimitive(protectedDiv, 2)
+
 
 class MultiPrimitiveTree(dict):
     def __init__(self, content: dict):
@@ -65,21 +122,76 @@ class MultiPrimitiveTree(dict):
             type: str(ind)
             for type, ind in self.items()
         })
-
+    
 def cxOnePoint_type_wise(ind1: MultiPrimitiveTree, ind2: MultiPrimitiveTree):
     """Exchange subtrees between each individual with the same tree type
     """
     if ind1.keys() != ind2.keys():
         raise ValueError("ind1 and ind2 doesn't have the same tree type")
     keys = ind1.keys()
-    for k in keys:
-        ind1[k], ind2[k] = cxOnePoint(ind1=ind1[k], ind2=ind2[k])
+    for k in ind1.keys():
+        try:
+            # 正常的一点交叉
+            ind1[k], ind2[k] = cxOnePoint(ind1=ind1[k], ind2=ind2[k])
+        except Exception as e:
+            # 这里一般是 IndexError: list index out of range 等树结构异常
+            print(f"[cxOnePoint_type_wise] key={k} 发生异常：{e},"
+                  f"将用随机生成的新树替换该类型下的两棵树")
+
+            new_tree1 = gp.PrimitiveTree(gp.genHalfAndHalf(pset=pset[k], min_=min_depth, max_=max_depth))
+            new_tree2 = gp.PrimitiveTree(gp.genHalfAndHalf(pset=pset[k], min_=min_depth, max_=max_depth))
+
+            ind1[k] = new_tree1
+            ind2[k] = new_tree2
+
     return ind1, ind2
 
 
 def mutUniform_multi_tree(individual: MultiPrimitiveTree, expr, pset):
     for k in individual.keys():
-        mutUniform(individual[k], expr, pset[k])
+        try:
+            mutUniform(individual[k], expr, pset[k])
+        except Exception as e:
+            # 这里一般是 IndexError: list index out of range 等树结构异常
+            print(f"[cxOnePoint_type_wise] key={k} 发生异常：{e},"
+                  f"将用随机生成的新树替换该类型下的两棵树")
+
+            new_tree1 = gp.PrimitiveTree(gp.genHalfAndHalf(pset=pset[k], min_=min_depth, max_=max_depth))
+
+            individual[k] = new_tree1
+
+    return individual,
+
+def llm_mutUniform_multi_tree(individual: MultiPrimitiveTree, elitism: list, expr, pset, llm_func, crtor):
+    p = random.random()
+    if p > 0.5:
+        for k in individual.keys():
+            try:
+                mutUniform(individual[k], expr, pset[k])
+            except Exception as e:
+                # 这里一般是 IndexError: list index out of range 等树结构异常
+                print(f"[cxOnePoint_type_wise] key={k} 发生异常：{e},"
+                    f"将用随机生成的新树替换该类型下的两棵树")
+
+                new_tree1 = gp.PrimitiveTree(gp.genHalfAndHalf(pset=pset[k], min_=min_depth, max_=max_depth))
+
+                individual[k] = new_tree1
+    else:
+        try:
+            llm_candidates = llm_func(
+                individual,
+                pset,
+                good_inds=elitism,
+                api_key=APIKEY,
+            )
+            individual = crtor.Individual(llm_candidates[0])
+        except Exception as exc:
+            print(f"LLM seeding skipped: {exc}")
+            for k in individual.keys():
+                new_tree1 = gp.PrimitiveTree(gp.genHalfAndHalf(pset=pset[k], min_=min_depth, max_=max_depth))
+
+                individual[k] = new_tree1
+
     return individual,
 
 
@@ -117,47 +229,59 @@ def assignCrowdingDist(individuals):
 
 
 def staticLimit(key, max_value):
-    """Implement a static limit on some measurement on a GP tree, as defined
-    by Koza in [Koza1989]. It may be used to decorate both crossover and
-    mutation operators. When an invalid (over the limit) child is generated,
-    it is simply replaced by one of its parents, randomly selected.
-
-    This operator can be used to avoid memory errors occurring when the tree
-    gets higher than 90 levels (as Python puts a limit on the call stack
-    depth), because it can ensure that no tree higher than this limit will ever
-    be accepted in the population, except if it was generated at initialization
-    time.
-
-    :param key: The function to use in order the get the wanted value. For
-                instance, on a GP tree, ``operator.attrgetter('height')`` may
-                be used to set a depth limit, and ``len`` to set a size limit.
-    :param max_value: The maximum value allowed for the given measurement.
-    :returns: A decorator that can be applied to a GP operator using \
-    :func:`~deap.base.Toolbox.decorate`
-
-    .. note::
-       If you want to reproduce the exact behavior intended by Koza, set
-       *key* to ``operator.attrgetter('height')`` and *max_value* to 17.
-
-    .. [Koza1989] J.R. Koza, Genetic Programming - On the Programming of
-        Computers by Means of Natural Selection (MIT Press,
-        Cambridge, MA, 1992)
-
-    """
-
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            keep_inds = [copy.deepcopy(ind) for ind in args]
+            # 只拷贝“父代个体”（Mapping），用于回退
+            keep_inds = [copy.deepcopy(ind) for ind in args if isinstance(ind, Mapping)]
+            if not keep_inds:
+                # 没有可回退的 parent，就直接执行（或你也可以 raise）
+                return func(*args, **kwargs)
+
             new_inds = list(func(*args, **kwargs))
+
             for i, ind in enumerate(new_inds):
-                for type, sub_ind in ind.items():
-                    if key(sub_ind) > max_value:
-                        new_inds[i][type] = random.choice(keep_inds)[type]
+                if not isinstance(ind, Mapping):
+                    continue
+
+                for t, sub_ind in list(ind.items()):
+                    invalid = False
+
+                    # 1) 空/None 直接判 invalid（会触发回退）
+                    if sub_ind is None:
+                        invalid = True
+                    else:
+                        try:
+                            # 2) 对“空树”做显式保护：len==0 直接 invalid
+                            #    (PrimitiveTree / list-like 都适用)
+                            if hasattr(sub_ind, "__len__") and len(sub_ind) == 0:
+                                invalid = True
+                        except Exception:
+                            # len() 本身异常，也当 invalid
+                            invalid = True
+
+                    # 3) 计算 key 也要 try/except（height 出错就回退）
+                    if not invalid:
+                        try:
+                            v = key(sub_ind)
+                            if v > max_value:
+                                invalid = True
+                        except Exception:
+                            invalid = True
+
+                    # 4) invalid -> 用父代对应子树回退
+                    if invalid:
+                        parent = random.choice(keep_inds)
+                        if isinstance(parent, Mapping) and t in parent:
+                            ind[t] = copy.deepcopy(parent[t])
+                        else:
+                            # 父代没有这个 key，就保守地不动或直接删掉都行
+                            # 这里选择“不动”
+                            pass
+
             return new_inds
 
         return wrapper
-
     return decorator
 
 
@@ -306,6 +430,57 @@ def generate(pset, mutual_matrix, min_, max_, condition, type_=None):
             for arg in reversed(prim.args):
                 stack.append((depth + 1, arg))
     return expr
+
+def llm_varAnd(population, toolbox, cxpb, mutpb, elitism: list = None):
+    r"""Part of an evolutionary algorithm applying only the variation part
+    (crossover **and** mutation). The modified individuals have their
+    fitness invalidated. The individuals are cloned so returned population is
+    independent of the input population.
+
+    :param population: A list of individuals to vary.
+    :param toolbox: A :class:`~deap.base.Toolbox` that contains the evolution
+                    operators.
+    :param cxpb: The probability of mating two individuals.
+    :param mutpb: The probability of mutating an individual.
+    :returns: A list of varied individuals that are independent of their
+              parents.
+
+    The variation goes as follow. First, the parental population
+    :math:`P_\mathrm{p}` is duplicated using the :meth:`toolbox.clone` method
+    and the result is put into the offspring population :math:`P_\mathrm{o}`.  A
+    first loop over :math:`P_\mathrm{o}` is executed to mate pairs of
+    consecutive individuals. According to the crossover probability *cxpb*, the
+    individuals :math:`\mathbf{x}_i` and :math:`\mathbf{x}_{i+1}` are mated
+    using the :meth:`toolbox.mate` method. The resulting children
+    :math:`\mathbf{y}_i` and :math:`\mathbf{y}_{i+1}` replace their respective
+    parents in :math:`P_\mathrm{o}`. A second loop over the resulting
+    :math:`P_\mathrm{o}` is executed to mutate every individual with a
+    probability *mutpb*. When an individual is mutated it replaces its not
+    mutated version in :math:`P_\mathrm{o}`. The resulting :math:`P_\mathrm{o}`
+    is returned.
+
+    This variation is named *And* because of its propensity to apply both
+    crossover and mutation on the individuals. Note that both operators are
+    not applied systematically, the resulting individuals can be generated from
+    crossover only, mutation only, crossover and mutation, and reproduction
+    according to the given probabilities. Both probabilities should be in
+    :math:`[0, 1]`.
+    """
+    offspring = [toolbox.clone(ind) for ind in population]
+
+    # Apply crossover and mutation on the offspring
+    for i in range(1, len(offspring), 2):
+        if random.random() < cxpb:
+            offspring[i - 1], offspring[i] = toolbox.mate(offspring[i - 1],
+                                                          offspring[i])
+            del offspring[i - 1].fitness.values, offspring[i].fitness.values
+
+    for i in range(len(offspring)):
+        if random.random() < mutpb:
+            offspring[i], = toolbox.mutate(offspring[i], elitism)
+            del offspring[i].fitness.values
+
+    return offspring
 
 # =========
 # Multitask

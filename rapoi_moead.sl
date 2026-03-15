@@ -9,4 +9,5 @@
 module load GCCcore/13.2.0 Python/3.11.5
 source ../../zhengxin/venv/bin/activate
 
-python3 solve_moead.py -r $1 -s $1 --log-fronts-gen 69
+python3 -m z.moead.main -r $1 -s $1 # --log-fronts-gen 69
+

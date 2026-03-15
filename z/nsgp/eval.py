@@ -7,6 +7,7 @@ import re
 import json
 import ast
 import argparse
+import time
 from datetime import datetime
 
 import numpy as np
@@ -21,6 +22,8 @@ from env.simulator.code.simulator import Simulator, SimulatorState
 
 # Unified decimal precision for rounding, aligned with solve_mogp/solve_moead_pymoo
 DECIMAL_PRECISION = 6
+
+DIR = "POP_1024_GEN_70"
 
 
 def protectedDiv(left, right):
@@ -95,7 +98,7 @@ def eval_individual(
     func0 = toolbox.compile(expr=individual["vm"], pset=pset["vm"])
     func1 = toolbox.compile(expr=individual["pm"], pset=pset["pm"])
     current_timestamp = sim.current_timestamp
-
+    time_list = []
     for app, clist in applications_reverse.items():
         container_clusters, P, P_container_id = app.min_cut(
             containers, os, 24000, 20000
@@ -103,6 +106,7 @@ def eval_individual(
 
         num = 0
         for row in container_clusters.iterrows():
+            start_time = time.time()
             vm_selection = sim.vm_selection(func0, app, [], row[1][0:3], row[1][3], 1)
             cid_list = []
             for p in range(len(P[num])):
@@ -115,6 +119,9 @@ def eval_individual(
             if sim.to_allocate_vm_data != None:
                 pm_selection = sim.pm_selection(func1, app, [], 1)
                 sim.step_second_layer(pm_selection, cid_list, row[1][0:3], row[1][3])
+            end_time = time.time()
+            time_list.append((end_time - start_time) * 1000)
+            # print(len(time_list))
 
         sim.update_current_communication(app)
         if sim.current_timestamp != current_timestamp:
@@ -166,33 +173,38 @@ def filter_nondominated_entries(entries):
 
 def parse_run_from_filename(fname: str):
     # expects pattern like nsw_Bitbrains_3OS_NSGP2_{run}_core_{cpu}.json
-    m = re.search(r"NSGP2_(\d+)_core_(\d+)\.json$", fname)
+    m = re.search(r"NSGP2_(\d+)_core_40.json$", fname)
     if m:
-        return int(m.group(1)), int(m.group(2))
+        return int(m.group(1))
     # fallback
     return None, None
 
 
-def get_output_file(cpu_num: int, run: int = None, gen: int = None):
+def get_output_file(num_test: int, run: int=None, gen: int=None, OS: str=None, multi_gen: bool=False, end: int=None):
     """Build output path under results/testing and ensure file exists with schema.
 
     Parent folder format: {YYYYMMDD-HHMM}. If the folder already exists, reuse it.
 
     Returns: (out_file_path, single_run_mode: bool)
     """
-    base_dir = os.path.join(os.getcwd(), "results", "testing")
+    output_dir = os.path.dirname(os.path.abspath(__file__));
+
+    if multi_gen:
+        base_dir = os.path.join(output_dir, "output", "testing", "convergence", f"TEST_{num_test}", DIR)
+    else:
+        base_dir = os.path.join(output_dir, "output", "testing", DIR)
     # Hardcoded parent folder format: {YYYYMMDD-HHMM}
     ts_folder = datetime.now().strftime("%Y%m%d-%H%M")
-    out_dir = os.path.join(base_dir, ts_folder)
+    out_dir = base_dir #os.path.join(base_dir, ts_folder)
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
-    gen_suffix = f"_gen_{gen}" if gen is not None else ""
+    gen_suffix = f"_gen_{gen}_{end}" if gen is not None else ""
 
     if run is not None:
         # single-run mode file
         out_file = os.path.join(
             out_dir,
-            f"nsw_Bitbrains_3OS_NSGP2_core_{cpu_num}_run_{run}{gen_suffix}.json",
+            f"Bitbrains_{OS}_NSGP2_run_{run}{gen_suffix}.json",
         )
         if not os.path.exists(out_file):
             with open(out_file, "w") as f:
@@ -202,7 +214,7 @@ def get_output_file(cpu_num: int, run: int = None, gen: int = None):
         # multi-run aggregate file
         out_file = os.path.join(
             out_dir,
-            f"aggregate_nsw_Bitbrains_3OS_NSGP2_core_{cpu_num}{gen_suffix}.json",
+            f"aggregate_Bitbrains_{OS}_NSGP2{gen_suffix}.json",
         )
         if not os.path.exists(out_file):
             with open(out_file, "w") as f:
@@ -238,6 +250,13 @@ def build_test_mogp_parser() -> argparse.ArgumentParser:
         help="Only evaluate the specified generation index (default: all)",
     )
     parser.add_argument(
+        "--multi_gen",
+        type=int,
+        nargs='+',
+        default=list,
+        help="Evaluate multiple generations (default: all)",
+    )
+    parser.add_argument(
         "--train_dir",
         type=str,
         required=True,
@@ -255,7 +274,8 @@ def parse_test_mogp_args(argv=None):
 
 
 def resolve_train_dir(arg_value: str | None) -> str:
-    base_train_root = os.path.join(os.getcwd(), "results", "training")
+    base_dir = os.path.dirname(os.path.abspath(__file__));
+    base_train_root = os.path.join(base_dir, "output", "training", DIR)
     if arg_value is None:
         raise SystemExit("Error: --train_dir is required. Example: --train_dir 20250904-1956")
     if os.path.isabs(arg_value) or os.path.sep in arg_value:
@@ -273,7 +293,7 @@ def iter_training_runs(train_dir: str, run_filter: int | None):
             continue
         if "NSGP2" not in fname:
             continue
-        run_idx, _cpu_num = parse_run_from_filename(fname)
+        run_idx = parse_run_from_filename(fname)
         if run_filter is not None and (run_idx is None or run_idx != run_filter):
             continue
         path = os.path.join(train_dir, fname)
@@ -283,7 +303,7 @@ def iter_training_runs(train_dir: str, run_filter: int | None):
         yield fname, run_key, train_data
 
 
-def ensure_output_root(out_file: str, single_run_mode: bool, run_key: str, train_data: dict):
+def ensure_output_root(out_file: str, single_run_mode: bool, run_key: str, train_data: dict, gen: str, font_size: int):
     with open(out_file, "r") as f:
         agg = json.load(f)
     if single_run_mode:
@@ -294,7 +314,12 @@ def ensure_output_root(out_file: str, single_run_mode: bool, run_key: str, train
         if run_key not in agg["runs"]:
             agg["runs"][run_key] = {
                 "sub_population_size": train_data.get("sub_population_size"),
-                "generation": {},
+                "generation": {
+                                gen: {
+                                    "front": [],
+                                    "front_size": font_size,
+                                }
+                            },
             }
         else:
             agg["runs"][run_key].setdefault(
@@ -436,86 +461,133 @@ def add_normalized_fields(
     with open(out_file, "w") as f:
         json.dump(agg, f)
 
-
-def main():
-    args = parse_test_mogp_args()
-
-    config = get_config(path="./config/communication_mincut_gp.yaml")
-    pset = build_pset(config)
-
-    # Prepare testing data once (shared across runs/generations)
-    sim_state, input_containers, applications, applications_reverse, input_os = (
-        testing_simulation(
-            test_num=args.test_num, start=args.start, end=args.end, run=0
-        )
-    )
-
-    toolbox = base.Toolbox()
-    toolbox.register("compile", gp.compile, pset=pset)
-
-    # Output path and init progressive file
-    out_file, single_run_mode = get_output_file(
-        cpu_num=config["cpu_num"], run=args.run, gen=args.gen
-    )
-
-    train_dir = resolve_train_dir(args.train_dir)
-    print(f"Reading training JSONs from: {train_dir}")
-    for fname, run_key, train_data in iter_training_runs(train_dir, args.run):
-        print(f"==> Evaluating run {run_key} from {fname}")
-        ensure_output_root(out_file, single_run_mode, run_key, train_data)
-
-        generations = train_data.get("generation", {})
-        for gen_str, gen_payload in generations.items():
-            if args.gen is not None:
-                try:
-                    if int(gen_str) != args.gen:
-                        continue
-                except ValueError:
-                    continue
-
-            parsed_exprs = extract_front_exprs(gen_payload)
-            front = []
-            for expr_str in parsed_exprs:
-                # Parse dict-like string safely
-                try:
-                    expr_dict = ast.literal_eval(expr_str)
-                except Exception:
-                    print(f"[Run {run_key} Gen {gen_str}] Skipping malformed individual expr.")
-                    continue
-                mtree = MultiPrimitiveTree.from_string(expr_dict, pset)
-                front.append((mtree, expr_str))
-
-            print(f"[Run {run_key} Gen {gen_str}] Evaluating {len(front)} individuals on test data...")
-
-            ensure_generation_slot(out_file, single_run_mode, run_key, gen_str, len(parsed_exprs))
-
-            for ind, expr_str in front:
-                energy, comm = eval_individual(
-                    ind,
-                    sim_state,
+def test_single_run(args, fname: str, run_key: str, train_data: dict,
+                    out_file: str, single_run_mode: bool,
+                    sim_state: SimulatorState,
                     input_containers,
                     input_os,
                     applications_reverse,
                     toolbox,
                     pset,
-                    test=True,
-                )
-                entry = {
-                    "energy": round(energy, DECIMAL_PRECISION),
-                    "communication": round(comm, DECIMAL_PRECISION),
-                }
-                if not args.hide_expr:
-                    entry["expr"] = expr_str
-                idx = append_eval_result(out_file, single_run_mode, run_key, gen_str, entry)
-                print(
-                    f"[Run {run_key} Gen {gen_str}] Front {idx}: energy={energy:.2f}, communication={comm:.2f} (written)"
-                )
+                    gen
+                    ):
+    print(f"==> Evaluating run {run_key} from {fname}")
+    generations = train_data.get("generation", {})
 
-            kept, total = annotate_dominated(out_file, single_run_mode, run_key, gen_str)
+    # save json entries
+    entries = []
+    for gen_str, gen_payload in generations.items():
+        if gen is not None:
+            try:
+                if int(gen_str) != gen:
+                    continue
+            except ValueError:
+                continue
+
+        parsed_exprs = extract_front_exprs(gen_payload)
+        front = []
+        for expr_str in parsed_exprs:
+            # Parse dict-like string safely
+            try:
+                expr_dict = ast.literal_eval(expr_str)
+            except Exception:
+                print(f"[Run {run_key} Gen {gen_str}] Skipping malformed individual expr.")
+                continue
+            mtree = MultiPrimitiveTree.from_string(expr_dict, pset)
+            front.append((mtree, expr_str))
+
+        ensure_output_root(out_file, single_run_mode, run_key, train_data, str(gen), len(front))
+        print(f"[Run {run_key} Gen {gen_str}] Evaluating {len(front)} individuals on test data...")
+
+
+        for idx, (ind, expr_str) in enumerate(front):
+            energy, comm = eval_individual(
+                ind,
+                sim_state,
+                input_containers,
+                input_os,
+                applications_reverse,
+                toolbox,
+                pset,
+                test=True,
+            )
+            entry = {
+                "energy": round(energy, DECIMAL_PRECISION),
+                "communication": round(comm, DECIMAL_PRECISION),
+            }
+            if not args.hide_expr:
+                entry["expr"] = expr_str
+            entries.append(entry)
+            # idx = append_eval_result(out_file, single_run_mode, run_key, gen_str, entry)
+            print(
+                f"[Run {run_key} Gen {gen_str}] Front {idx}: energy={energy:.2f}, communication={comm:.2f} (written)"
+            )
+
+        
+    print(f"==> Finishe run {run_key} from {fname}")
+    
+    return {run_key: entries}
+
+
+def main():
+    from multiprocessing import Pool
+
+    args = parse_test_mogp_args()
+
+    config = get_config(path="./config/communication_mincut_gp.yaml")
+    pset = build_pset(config)
+
+    if args.gen != None:
+        gen_list = [args.gen]
+        multi_gen = False
+    else:
+        gen_list = args.multi_gen
+        multi_gen = True
+    # Prepare testing data once (shared across runs/generations)
+    for gen in gen_list:
+        sim_state, input_containers, applications, applications_reverse, input_os = (
+            testing_simulation(
+                test_num=args.test_num, start=args.start, end=args.end, run=0, os_dataset=args.train_dir
+            )
+        )
+
+        toolbox = base.Toolbox()
+        toolbox.register("compile", gp.compile, pset=pset)
+
+        # Output path and init progressive file
+        out_file, single_run_mode = get_output_file(
+            num_test=args.end, run=args.run, gen=gen, OS=args.train_dir, multi_gen=multi_gen, end=args.end
+        )
+
+        train_dir = resolve_train_dir(args.train_dir)
+        print(f"Reading training JSONs from: {train_dir}")
+        param_list = []
+
+        for fname, run_key, train_data in iter_training_runs(train_dir, args.run):
+            param_list.append((args, fname, run_key, train_data,
+                            out_file, single_run_mode,
+                            sim_state,
+                            input_containers,
+                            input_os,
+                            applications_reverse,
+                            toolbox,
+                            pset,
+                            gen
+                            ))
+
+        with Pool(8) as pool:
+            results = pool.starmap(test_single_run, param_list)
+
+        for res in results:
+            [(run_key, entries)] = res.items()
+            for entry in entries:
+                append_eval_result(out_file, single_run_mode, run_key, str(gen), entry)
+            
+            kept, total = annotate_dominated(out_file, single_run_mode, run_key, str(gen))
             # Add normalized fields for the evaluated front of this generation
-            add_normalized_fields(out_file, single_run_mode, run_key, gen_str)
-            print(f"[Run {run_key} Gen {gen_str}] Saved {len(parsed_exprs)} results to {out_file}")
-            print(f"[Run {run_key} Gen {gen_str}] Marked dominated entries; first-front size: {kept} of {total}")
+            add_normalized_fields(out_file, single_run_mode, run_key, str(gen))
+            print(f"[Run {run_key} Gen {str(gen)}] Marked dominated entries; first-front size: {kept} of {total}")
+
 
     print(f"Testing results written to {out_file}")
 
