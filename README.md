@@ -1,13 +1,31 @@
-### Requirment Install
-pip3 install -r requirements.txt
+# Project Name
+
+Multi-Objective GP for Resource Allocation in Container-based Clouds
+
+---
+
+# 1. Clone the Repository
+
+This repository uses **Git LFS** to store large files.  
+Please install Git LFS before cloning the repository.
+
+## Install Git LFS
+
+Mac: `brew install git-lfs`
+---------
+Ubantu: `sudo apt install git-lfs`
+---------
+Windows:
+Download and install from:  
+https://git-lfs.github.com
+---------
+
+After installation, initialize Git LFS:
+
+
+### Dependencies Install
+We recommend installing dependencies in a virtual environment.
+`pip3 install -r requirements.txt`
 
 ### Run 
-
-### Run
-`python3 run_rapoi.py`
-
-### Inspect Running Jobs
-`squeue --me`
-
-### Kill job
-`scancel jobid`
+`python3 -m z.nsgp.main`
